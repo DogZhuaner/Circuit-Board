@@ -1,0 +1,14 @@
+{
+  "server_base": "http://服务器IP:7001",
+  "cors_origins": "*",
+  "request_timeout": 10,
+  "student_no": "20261001",
+  "student_name": "张三",
+  "test_id": 1,
+  "test_name": "电机正反转控制电路考试",
+  "rule_filename": "长动.json",
+  "local_rule_path": "./data/rules/current_rule.json",
+  "stm_port": "COM4",
+  "stm_baud": 38400,
+  "stm_timeout": 3
+}

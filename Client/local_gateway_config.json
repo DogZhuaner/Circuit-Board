@@ -1,0 +1,14 @@
+{
+  "server_base": "http://192.168.1.104:7001",
+  "cors_origins": "*",
+  "request_timeout": 10,
+  "student_no": "",
+  "student_name": "",
+  "test_id": "",
+  "test_name": "",
+  "rule_filename": "",
+  "local_rule_path": "./data/rules/current_rule.json",
+  "stm_port": "COM4",
+  "stm_baud": 38400,
+  "stm_timeout": 3
+}
