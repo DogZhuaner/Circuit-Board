@@ -4,6 +4,8 @@ from global_config import Global_Config
 
 def _canonical_pair(a: str, b: str) -> Tuple[str, str]:
     """把触点对规范化为有序二元组，用于忽略顺序匹配。"""
+    a = str(a).strip()
+    b = str(b).strip()
     return (a, b) if a <= b else (b, a)
 
 
@@ -93,14 +95,22 @@ def evaluate_pairs(
     total_score: float = 0.0
     matched: List[Dict[str, Any]] = []
     unmatched: List[Dict[str, Any]] = []
+    seen_pairs = set()
+    duplicate_count = 0
 
     for p in pairs:
         if not isinstance(p, list) or len(p) != 2:
             # 非法pair直接跳过，也可以改为 raise
             continue
 
-        a, b = str(p[0]), str(p[1])
+        a, b = str(p[0]).strip(), str(p[1]).strip()
+        if not a or not b:
+            continue
         key = _canonical_pair(a, b)
+        if key in seen_pairs:
+            duplicate_count += 1
+            continue
+        seen_pairs.add(key)
 
         if key in answer_map:
             info = answer_map[key]
@@ -119,7 +129,9 @@ def evaluate_pairs(
         "total_score": total_score,
         "matched": matched,
         "unmatched": unmatched,
-        "pairs_count": len(pairs),
+        "pairs_count": len(seen_pairs),
+        "raw_pairs_count": len(pairs),
+        "duplicate_count": duplicate_count,
         "matched_count": len(matched),
     }
 
@@ -127,7 +139,12 @@ def evaluate_pairs(
         print("======== Pairs评分结果 ========")
         print(f"参考答案: {answer_json_path}")
         print(f"待评估:   {output_json_path}")
-        print(f"pairs总数: {result['pairs_count']}，匹配数: {result['matched_count']}，总分: {result['total_score']}")
+        print(
+            f"pairs总数: {result['pairs_count']}，"
+            f"原始pairs数: {result['raw_pairs_count']}，"
+            f"重复忽略: {result['duplicate_count']}，"
+            f"匹配数: {result['matched_count']}，总分: {result['total_score']}"
+        )
         print("\n-- 匹配到的pairs（pair -> score）--")
         for m in matched:
             # 展示pair本身 + 对应参考nodes/id，便于排查

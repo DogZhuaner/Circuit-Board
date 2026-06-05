@@ -7,8 +7,8 @@
     <link href="/static/css/bootstrap.min.css" rel="stylesheet">
     <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
     <script src="/static/js/socket.io.min.js"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/vue.global.js"></script>
+    <script src="/static/js/chart.min.js"></script>
     <style>
         :root {
             --primary-color: #4f46e5;
@@ -137,13 +137,13 @@
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
         .btn-container {
-            padding: 40px;
+            padding: 44px 56px;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            grid-auto-rows: minmax(220px, auto);
-            gap: 40px;
+            grid-template-columns: repeat(2, minmax(280px, 420px));
+            grid-auto-rows: minmax(220px, 1fr);
+            gap: 28px;
             height: calc(100% - 180px);
-            max-width: 1320px;
+            max-width: 960px;
             margin: 0 auto;
             overflow-y: auto;
             scrollbar-width: thin;
@@ -158,8 +158,8 @@
             align-items: center;
             justify-content: center;
             height: 100%;
-            min-height: 260px;
-            aspect-ratio: 1.1;
+            min-height: 220px;
+            aspect-ratio: auto;
             border-radius: var(--card-radius);
             box-shadow: var(--shadow-lg);
             padding: 25px 15px;
@@ -171,6 +171,10 @@
             position: relative;
             overflow: hidden;
             background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
+        }
+
+        .feature-hidden {
+            display: none !important;
         }
         .btn-container::-webkit-scrollbar {
             width: 6px;
@@ -513,6 +517,17 @@
         }
         
         @media (max-width: 768px) {
+            .btn-container {
+                grid-template-columns: 1fr;
+                padding: 28px 20px;
+                gap: 18px;
+                height: calc(100% - 165px);
+            }
+
+            .btn-card {
+                min-height: 170px;
+            }
+
             .detail-info {
                 grid-template-columns: 1fr;
             }
@@ -569,12 +584,12 @@
             </div>
         </div>
         <div class="btn-container">
-            <div class="btn-card btn-light-blue" @click="openCreateExamModal">
+            <div class="btn-card btn-light-blue feature-hidden" @click="openCreateExamModal">
                 <div class="btn-icon"><i class="bi bi-plus-circle"></i></div>
                 <div class="btn-text">新增考试</div>
                 <div class="btn-subtext">创建新的考试任务</div>
             </div>
-            <div class="btn-card btn-success" @click="openViewScoresModal">
+            <div class="btn-card btn-success feature-hidden" @click="openViewScoresModal">
                 <div class="btn-icon"><i class="bi bi-bar-chart-line"></i></div>
                 <div class="btn-text">查看学生成绩</div>
                 <div class="btn-subtext">分析和导出考试结果</div>
@@ -584,7 +599,7 @@
                 <div class="btn-text">管理学生</div>
                 <div class="btn-subtext">添加、编辑和删除学生信息</div>
             </div>
-            <div class="btn-card btn-danger" @click="toggleRuleServer">
+            <div class="btn-card btn-danger feature-hidden" @click="toggleRuleServer">
                 <div class="btn-icon"><i class="bi bi-server"></i></div>
                 <div class="btn-text" v-text="ruleServerStatus === 'stopped' ? '开启规则下载服务' : '停止规则下载服务'"></div>
                 <div class="btn-subtext">控制接线规则文件的分发</div>
@@ -604,7 +619,7 @@
                 <div class="btn-text">注册审批</div>
                 <div class="btn-subtext">审批学生或教师的注册请求</div>
             </div>
-            <div class="btn-card btn-light-cyan" @click="openExamListModal">
+            <div class="btn-card btn-light-cyan feature-hidden" @click="openExamListModal">
                 <div class="btn-icon"><i class="bi bi-file-text"></i></div>
                 <div class="btn-text">查看考试</div>
                 <div class="btn-subtext">查看和管理已创建的考试</div>
@@ -614,7 +629,7 @@
     </div>
 
     <!-- 新增考试模态框 -->
-    <div class="modal" :style="{display: showCreateExamModal ? 'block' : 'none'}">
+    <div class="modal feature-hidden" :style="{display: showCreateExamModal ? 'block' : 'none'}">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">新增考试</h2>
@@ -830,37 +845,41 @@
                 <div class="rule-builder-layout">
                     <div class="rule-panel" ref="rulePanel">
                         {% raw %}
-                        <svg class="rule-wire-layer" :width="ruleCanvas.width" :height="ruleCanvas.height">
-                            <defs>
-                                <filter id="ruleWireShadow" x="-20%" y="-20%" width="140%" height="140%">
-                                    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#1d4ed8" flood-opacity="0.22"/>
-                                </filter>
-                            </defs>
-                            <g v-for="wire in ruleBuilder.wires" :key="wire.id" class="rule-wire-group" @click.stop="selectRuleWire(wire.id)">
-                                <path :d="getRuleWirePath(wire)" class="rule-wire-underlay"></path>
-                                <path :d="getRuleWirePath(wire)" class="rule-wire-path"></path>
-                                <circle :cx="getRuleContactAnchor(wire.start).x" :cy="getRuleContactAnchor(wire.start).y" r="3.2" class="rule-wire-terminal"></circle>
-                                <circle :cx="getRuleContactAnchor(wire.end).x" :cy="getRuleContactAnchor(wire.end).y" r="3.2" class="rule-wire-terminal"></circle>
-                            </g>
-                            <text v-for="wire in scoredRuleWires"
-                                  :key="'score-' + wire.id"
-                                  :x="getRuleWireLabelPoint(wire).x"
-                                  :y="getRuleWireLabelPoint(wire).y"
-                                  class="rule-score-label">{{ wire.score }}</text>
-                        </svg>
-                        <div class="rule-canvas-scale" :style="ruleCanvasStyle">
-                            <div v-for="region in ruleContactRegions" :key="region.name" class="rule-region">
-                                <div class="rule-region-title">{{ region.title }}</div>
-                                <div class="rule-component" v-for="component in region.components" :key="region.name + component.name">
-                                    <div class="rule-component-name">{{ component.name }}</div>
-                                    <button v-for="contact in component.contacts"
-                                            :key="contact"
-                                            :ref="el => setRuleContactRef(contact, el)"
-                                            class="rule-contact"
-                                            :class="{selected: ruleBuilder.selectedContact === contact}"
-                                            @click="handleRuleContactClick(contact)">
-                                        {{ contact }}
-                                    </button>
+                        <div class="rule-canvas-content" :style="ruleCanvasViewportStyle">
+                            <div class="rule-canvas-inner" ref="ruleCanvasContent" :style="ruleCanvasStyle">
+                                <svg class="rule-wire-layer" :width="ruleCanvas.width" :height="ruleCanvas.height">
+                                    <defs>
+                                        <filter id="ruleWireShadow" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#1d4ed8" flood-opacity="0.22"/>
+                                        </filter>
+                                    </defs>
+                                    <g v-for="wire in ruleBuilder.wires" :key="wire.id" class="rule-wire-group" @click.stop="selectRuleWire(wire.id)">
+                                        <path :d="getRuleWirePath(wire)" class="rule-wire-underlay"></path>
+                                        <path :d="getRuleWirePath(wire)" class="rule-wire-path"></path>
+                                        <circle :cx="getRuleContactAnchor(wire.start).x" :cy="getRuleContactAnchor(wire.start).y" r="3.2" class="rule-wire-terminal"></circle>
+                                        <circle :cx="getRuleContactAnchor(wire.end).x" :cy="getRuleContactAnchor(wire.end).y" r="3.2" class="rule-wire-terminal"></circle>
+                                    </g>
+                                    <text v-for="wire in scoredRuleWires"
+                                          :key="'score-' + wire.id"
+                                          :x="getRuleWireLabelPoint(wire).x"
+                                          :y="getRuleWireLabelPoint(wire).y"
+                                          class="rule-score-label">{{ wire.score }}</text>
+                                </svg>
+                                <div class="rule-canvas-scale" ref="ruleCanvasScale">
+                                    <div v-for="region in ruleContactRegions" :key="region.name" class="rule-region">
+                                        <div class="rule-region-title">{{ region.title }}</div>
+                                        <div class="rule-component" v-for="component in region.components" :key="region.name + component.name">
+                                            <div class="rule-component-name">{{ component.name }}</div>
+                                            <button v-for="contact in component.contacts"
+                                                    :key="contact"
+                                                    :ref="el => setRuleContactRef(contact, el)"
+                                                    class="rule-contact"
+                                                    :class="{selected: ruleBuilder.selectedContact === contact}"
+                                                    @click="handleRuleContactClick(contact)">
+                                                {{ contact }}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -899,7 +918,7 @@
     </div>
 
     <!-- 查看考试列表模态框 -->
-    <div class="modal" :style="{display: showExamListModal ? 'block' : 'none'}">
+    <div class="modal feature-hidden" :style="{display: showExamListModal ? 'block' : 'none'}">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">
@@ -978,7 +997,7 @@
     </div>
 
     <!-- 考试详情模态框 -->
-    <div class="modal" :style="{display: showExamDetailModal ? 'block' : 'none'}">
+    <div class="modal feature-hidden" :style="{display: showExamDetailModal ? 'block' : 'none'}">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">
@@ -1038,7 +1057,7 @@
     </div>
 
     <!-- 查看成绩模态框 -->
-    <div class="modal" :style="{display: showViewScoresModal ? 'block' : 'none'}">
+    <div class="modal feature-hidden" :style="{display: showViewScoresModal ? 'block' : 'none'}">
         <div class="modal-content score-modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">
@@ -1117,12 +1136,16 @@
                         <h3>学生列表</h3>
                         <div class="table-container">
                             <div class="list-controls mb-3">
+                                <div class="search-box">
+                                    <i class="bi bi-search"></i>
+                                    <input type="text" v-model="studentSearchQuery" placeholder="搜索学号、姓名或用户ID..." class="search-input">
+                                </div>
                                 <div class="sort-controls">
                                     <label>排序方式:</label>
                                     <select v-model="studentSortBy" class="sort-select" @change="sortStudents">
                                         <option value="student_id">按学号排序</option>
                                         <option value="name">按姓名排序</option>
-                                        <option value="class">按班级排序</option>
+                                        <option value="user_id">按用户ID排序</option>
                                     </select>
                                 </div>
                             </div>
@@ -1131,20 +1154,25 @@
                                     <tr>
                                         <th>学号</th>
                                         <th>姓名</th>
-                                        <th>班级</th>
+                                        <th>用户ID</th>
+                                        <th>密码</th>
                                         <th>操作</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% raw %}
-                                    <tr v-for="student in students" :key="student.id">
-                                        <td>{{ student.student_id }}</td>
+                                    <tr v-for="student in filteredManagedStudents" :key="student.user_id || student.id">
+                                        <td>{{ student.sno || student.student_id }}</td>
                                         <td>{{ student.name }}</td>
-                                        <td>{{ student.class_name || '--' }}</td>
+                                        <td>{{ student.user_id || student.id }}</td>
+                                        <td>{{ student.student_password || student.password || '--' }}</td>
                                         <td>
                                             <button class="btn-action btn-edit" @click="editStudent(student)">编辑</button>
-                                            <button class="btn-action btn-delete" @click="deleteStudent(student.id)">删除</button>
+                                            <button class="btn-action btn-delete" @click="deleteStudent(student.user_id || student.id)">删除</button>
                                         </td>
+                                    </tr>
+                                    <tr v-if="filteredManagedStudents.length === 0">
+                                        <td colspan="5" style="text-align: center;">暂无学生数据</td>
                                     </tr>
                                     {% endraw %}
                                 </tbody>
@@ -1158,15 +1186,15 @@
                         <form @submit.prevent="saveStudent">
                             <div class="form-group">
                                 <label for="studentId">学号:</label>
-                                <input type="text" id="studentId" v-model="currentStudent.student_id" class="form-control" required :disabled="isEditing">
+                                <input type="text" id="studentId" v-model="currentStudent.sno" class="form-control" required>
                             </div>
                             <div class="form-group">
                                 <label for="studentName">姓名:</label>
                                 <input type="text" id="studentName" v-model="currentStudent.name" class="form-control" required>
                             </div>
                             <div class="form-group">
-                                <label for="studentClass">班级:</label>
-                                <input type="text" id="studentClass" v-model="currentStudent.class_name" class="form-control" required>
+                                <label for="studentPassword">密码:</label>
+                                <input type="text" id="studentPassword" v-model="currentStudent.student_password" class="form-control" required>
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="btn-modal btn-primary-modal">{% raw %}{{ isEditing ? '更新' : '添加' }}{% endraw %}</button>
@@ -2292,7 +2320,8 @@
 
     .rule-wire-layer {
         position: absolute;
-        inset: 0;
+        left: 0;
+        top: 0;
         z-index: 5;
         overflow: visible;
         pointer-events: none;
@@ -2326,12 +2355,27 @@
         stroke-width: 2;
     }
 
+    .rule-canvas-content {
+        position: relative;
+        width: max-content;
+        min-width: 720px;
+        min-height: 1px;
+    }
+
+    .rule-canvas-inner {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform-origin: top left;
+        width: max-content;
+        min-width: 720px;
+    }
+
     .rule-canvas-scale {
         display: grid;
         grid-template-columns: repeat(4, minmax(156px, 1fr));
         gap: 10px;
         min-width: 720px;
-        transform-origin: top left;
         position: relative;
         z-index: 2;
     }
@@ -2537,6 +2581,7 @@ const app = createApp({
             scoreSummary: null,
             studentsScores: [],
             scoreDistribution: [],
+            weakKnowledgePoints: [],
             gradeStats: {
                 excellent: 0,
                 good: 0,
@@ -2560,20 +2605,18 @@ const app = createApp({
                 endTime: ''
             },
             // 学生管理数据
-            students: [
-                { id: 1, sno: '2024001', name: '张三' },
-                { id: 2, sno: '2024002', name: '李四' },
-                { id: 3, sno: '2024003', name: '王五' },
-                { id: 4, sno: '2024004', name: '赵六' },
-                { id: 5, sno: '2024005', name: '钱七' }
-            ],
+            students: [],
             currentStudent: {
                 id: null,
+                user_id: null,
                 sno: '',
-                name: ''
+                student_id: '',
+                name: '',
+                student_password: ''
             },
             isEditing: false,
-            nextStudentId: 6,
+            studentSortBy: 'student_id',
+            studentSearchQuery: '',
             // 注册审批相关数据
             showApprovalModal: false,
             registrationRequests: [],
@@ -2591,6 +2634,7 @@ const app = createApp({
             ruleManagerMessage: '',
             ruleManagerLoading: false,
             ruleContactRefs: {},
+            ruleResizeObserver: null,
             ruleCanvas: { width: 1600, height: 900 },
             ruleBuilder: {
                 filename: '',
@@ -2634,6 +2678,20 @@ const app = createApp({
             });
 
             return filtered;
+        },
+        filteredManagedStudents() {
+            let filtered = this.students || [];
+            const query = (this.studentSearchQuery || '').trim().toLowerCase();
+            if (!query) {
+                return filtered;
+            }
+
+            return filtered.filter(student => {
+                const sno = String(student.sno || student.student_id || '').toLowerCase();
+                const name = String(student.name || '').toLowerCase();
+                const userId = String(student.user_id || student.id || '').toLowerCase();
+                return sno.includes(query) || name.includes(query) || userId.includes(query);
+            });
         },
         // 过滤注册请求
         filteredRequests() {
@@ -2714,10 +2772,19 @@ const app = createApp({
         selectedRuleMeta() {
             return this.ruleFiles.find(file => file.filename === this.selectedRuleFilename) || null;
         },
+        ruleCanvasViewportStyle() {
+            const zoom = Number(this.ruleBuilder.zoom || 1);
+            return {
+                width: `${Math.ceil(this.ruleCanvas.width * zoom)}px`,
+                height: `${Math.ceil(this.ruleCanvas.height * zoom)}px`
+            };
+        },
         ruleCanvasStyle() {
             const zoom = this.ruleBuilder.zoom || 1;
             return {
-                zoom
+                transform: `scale(${zoom})`,
+                width: `${this.ruleCanvas.width}px`,
+                height: `${this.ruleCanvas.height}px`
             };
         }
     },
@@ -2929,7 +2996,10 @@ const app = createApp({
             if (!this.ruleBuilder.filename) {
                 this.ruleBuilder.filename = `接线规则_${new Date().toISOString().slice(0, 10)}`;
             }
-            this.$nextTick(this.refreshRuleCanvas);
+            this.$nextTick(() => {
+                this.setupRuleCanvasObserver();
+                this.refreshRuleCanvas();
+            });
         },
         closeRuleBuilderModal() {
             this.showRuleBuilderModal = false;
@@ -2944,12 +3014,27 @@ const app = createApp({
                 this.ruleContactRefs[contact] = el;
             }
         },
+        setupRuleCanvasObserver() {
+            if (!window.ResizeObserver || !this.$refs.rulePanel) {
+                return;
+            }
+            if (this.ruleResizeObserver) {
+                this.ruleResizeObserver.disconnect();
+            }
+            this.ruleResizeObserver = new ResizeObserver(() => {
+                requestAnimationFrame(this.refreshRuleCanvas);
+            });
+            this.ruleResizeObserver.observe(this.$refs.rulePanel);
+            if (this.$refs.ruleCanvasScale) {
+                this.ruleResizeObserver.observe(this.$refs.ruleCanvasScale);
+            }
+        },
         refreshRuleCanvas() {
-            const panel = this.$refs.rulePanel;
-            if (!panel) return;
+            const scale = this.$refs.ruleCanvasScale;
+            if (!scale) return;
             this.ruleCanvas = {
-                width: Math.max(panel.scrollWidth, panel.clientWidth),
-                height: Math.max(panel.scrollHeight, panel.clientHeight)
+                width: Math.ceil(Math.max(scale.scrollWidth, scale.offsetWidth, scale.clientWidth)),
+                height: Math.ceil(Math.max(scale.scrollHeight, scale.offsetHeight, scale.clientHeight))
             };
         },
         zoomRulePanel(delta) {
@@ -2961,30 +3046,18 @@ const app = createApp({
             this.ruleBuilder.zoom = 0.82;
             this.$nextTick(this.refreshRuleCanvas);
         },
-        getRuleContactPoint(contact) {
-            const panel = this.$refs.rulePanel;
-            const el = this.ruleContactRefs[contact];
-            if (!panel || !el) {
-                return { x: 0, y: 0 };
-            }
-            const panelRect = panel.getBoundingClientRect();
-            const rect = el.getBoundingClientRect();
-            return {
-                x: rect.left - panelRect.left + panel.scrollLeft + rect.width - 10,
-                y: rect.top - panelRect.top + panel.scrollTop + rect.height / 2
-            };
-        },
         getRuleContactAnchor(contact) {
-            const panel = this.$refs.rulePanel;
+            const content = this.$refs.ruleCanvasContent;
             const el = this.ruleContactRefs[contact];
-            if (!panel || !el) {
+            if (!content || !el) {
                 return { x: 0, y: 0 };
             }
-            const panelRect = panel.getBoundingClientRect();
+            const zoom = Number(this.ruleBuilder.zoom || 1);
+            const contentRect = content.getBoundingClientRect();
             const rect = el.getBoundingClientRect();
             return {
-                x: rect.left - panelRect.left + panel.scrollLeft + rect.width / 2,
-                y: rect.top - panelRect.top + panel.scrollTop + 1
+                x: (rect.left - contentRect.left + rect.width / 2) / zoom,
+                y: (rect.top - contentRect.top + 1) / zoom
             };
         },
         getRuleWirePath(wire) {
@@ -3157,12 +3230,7 @@ const app = createApp({
                 if (data.success) {
                     alert('考试创建成功！考试ID: ' + data.exam_id);
                     this.closeCreateExamModal();
-                    // 添加到本地考试列表
-                    this.exams.push({
-                        id: data.exam_id,
-                        ...this.examForm
-                    });
-                    // 可以在这里添加刷新考试列表的逻辑
+                    this.fetchExams();
                 } else {
                     alert('考试创建失败: ' + data.message);
                 }
@@ -3220,73 +3288,13 @@ const app = createApp({
                     } else {
                         alert('获取考试列表失败: ' + data.message);
                         console.error('获取考试列表失败:', data.message);
-                        // 使用模拟数据作为备用
-                        this.exams = [
-                            {
-                                id: 'EXAM_001',
-                                test_name: '电机正反转控制电路考试',
-                                test_type: '实操考试',
-                                duration_minutes: 60,
-                                publish_time: '2024-01-15 14:00:00',
-                                deadline_time: '2024-01-15 16:00:00',
-                                create_time: '2024-01-10 09:00:00',
-                                update_time: '2024-01-10 09:00:00',
-                                teacher_info: {
-                                    tno: 'T001',
-                                    teacher_name: '张老师'
-                                }
-                            },
-                            {
-                                id: 'EXAM_002',
-                                test_name: '星三角降压启动电路考试',
-                                test_type: '实操考试',
-                                duration_minutes: 90,
-                                publish_time: '2024-01-20 09:00:00',
-                                deadline_time: '2024-01-20 11:30:00',
-                                create_time: '2024-01-15 15:30:00',
-                                update_time: '2024-01-15 15:30:00',
-                                teacher_info: {
-                                    tno: 'T001',
-                                    teacher_name: '张老师'
-                                }
-                            }
-                        ];
+                        this.exams = [];
                     }
                 })
                 .catch(error => {
                     console.error('获取考试列表失败', error);
                     alert('获取考试列表失败，请检查网络连接后重试');
-                    // 使用模拟数据作为备用
-                    this.exams = [
-                        {
-                            id: 'EXAM_001',
-                            test_name: '电机正反转控制电路考试',
-                            test_type: '实操考试',
-                            duration_minutes: 60,
-                            publish_time: '2024-01-15 14:00:00',
-                            deadline_time: '2024-01-15 16:00:00',
-                            create_time: '2024-01-10 09:00:00',
-                            update_time: '2024-01-10 09:00:00',
-                            teacher_info: {
-                                tno: 'T001',
-                                teacher_name: '张老师'
-                            }
-                        },
-                        {
-                            id: 'EXAM_002',
-                            test_name: '星三角降压启动电路考试',
-                            test_type: '实操考试',
-                            duration_minutes: 90,
-                            publish_time: '2024-01-20 09:00:00',
-                            deadline_time: '2024-01-20 11:30:00',
-                            create_time: '2024-01-15 15:30:00',
-                            update_time: '2024-01-15 15:30:00',
-                            teacher_info: {
-                                tno: 'T001',
-                                teacher_name: '张老师'
-                            }
-                        }
-                    ];
+                    this.exams = [];
                 });
         },
 
@@ -3343,15 +3351,19 @@ const app = createApp({
                 });
         },
         fetchWeakKnowledgePoints() {
-            // 模拟获取易错知识点数据
-            // 实际项目中应该从后端获取真实数据
-            this.weakKnowledgePoints = [
-                { point: '电机正反转控制电路-互锁原理', errorRate: 85 },
-                { point: '星三角降压启动电路-时间继电器设置', errorRate: 78 },
-                { point: '多地控制电路-按钮连接方式', errorRate: 72 },
-                { point: '顺序控制电路-接触器配合', errorRate: 68 },
-                { point: '时间控制电路-延时范围计算', errorRate: 65 }
-            ];
+            fetch('api/get_weak_knowledge_points')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        this.weakKnowledgePoints = data.points || [];
+                    } else {
+                        alert('获取易错知识点失败: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取易错知识点失败', error);
+                    alert('获取易错知识点失败，请重试');
+                });
         },
         updateSummaryDisplay() {
             // 这个方法现在是空的，因为我们直接使用Vue的数据绑定
@@ -3414,59 +3426,105 @@ const app = createApp({
         },
         openManageStudentsModal() {
             this.showManageStudentsModal = true;
-            // 重置表单状态
             this.cancelEdit();
+            this.fetchStudents();
         },
         closeManageStudentsModal() {
             this.showManageStudentsModal = false;
         },
+        fetchStudents() {
+            fetch(`api/students?sort_by=${encodeURIComponent(this.studentSortBy)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success && data.message) {
+                        alert(data.message);
+                        return;
+                    }
+                    this.students = data.students || [];
+                })
+                .catch(error => {
+                    console.error('获取学生列表失败', error);
+                    alert('获取学生列表失败，请检查数据库连接');
+                });
+        },
+        sortStudents() {
+            this.fetchStudents();
+        },
         editStudent(student) {
-            this.currentStudent = { ...student };
+            this.currentStudent = {
+                id: student.user_id || student.id,
+                user_id: student.user_id || student.id,
+                sno: student.sno || student.student_id || '',
+                student_id: student.sno || student.student_id || '',
+                name: student.name || '',
+                student_password: student.student_password || student.password || ''
+            };
             this.isEditing = true;
         },
         deleteStudent(studentId) {
             if (confirm('确定要删除这个学生吗？')) {
-                this.students = this.students.filter(student => student.id !== studentId);
-                // 如果正在编辑被删除的学生，取消编辑状态
-                if (this.isEditing && this.currentStudent.id === studentId) {
-                    this.cancelEdit();
-                }
+                fetch(`api/student/${studentId}`, { method: 'DELETE' })
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        if (!ok || !data.success) {
+                            alert(data.message || '删除学生失败');
+                            return;
+                        }
+                        if (this.isEditing && (this.currentStudent.user_id || this.currentStudent.id) === studentId) {
+                            this.cancelEdit();
+                        }
+                        this.fetchStudents();
+                    })
+                    .catch(error => {
+                        console.error('删除学生失败', error);
+                        alert('删除学生失败，请重试');
+                    });
             }
         },
         saveStudent() {
-            if (!this.currentStudent.sno || !this.currentStudent.name) {
-                alert('请填写完整的学号和姓名');
+            if (!this.currentStudent.sno || !this.currentStudent.name || !this.currentStudent.student_password) {
+                alert('请填写完整的学号、姓名和密码');
                 return;
             }
 
-            if (this.isEditing) {
-                // 更新现有学生
-                const index = this.students.findIndex(s => s.id === this.currentStudent.id);
-                if (index !== -1) {
-                    this.students.splice(index, 1, { ...this.currentStudent });
-                }
-            } else {
-                // 检查学号是否重复
-                const exists = this.students.some(s => s.sno === this.currentStudent.sno);
-                if (exists) {
-                    alert('该学号已存在，请使用其他学号');
-                    return;
-                }
-                // 添加新学生
-                this.students.push({
-                    id: this.nextStudentId++,
-                    ...this.currentStudent
-                });
-            }
+            const payload = {
+                sno: String(this.currentStudent.sno).trim(),
+                name: String(this.currentStudent.name).trim(),
+                student_password: String(this.currentStudent.student_password).trim()
+            };
+            const url = this.isEditing
+                ? `api/student/${this.currentStudent.user_id || this.currentStudent.id}`
+                : 'api/student';
+            const method = this.isEditing ? 'PUT' : 'POST';
 
-            // 重置表单
-            this.cancelEdit();
+            fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || !data.success) {
+                        alert(data.message || '保存学生失败');
+                        return;
+                    }
+                    alert(data.message || '保存成功');
+                    this.cancelEdit();
+                    this.fetchStudents();
+                })
+                .catch(error => {
+                    console.error('保存学生失败', error);
+                    alert('保存学生失败，请重试');
+                });
         },
         cancelEdit() {
             this.currentStudent = {
                 id: null,
+                user_id: null,
                 sno: '',
-                name: ''
+                student_id: '',
+                name: '',
+                student_password: ''
             };
             this.isEditing = false;
         },
@@ -3724,14 +3782,24 @@ const app = createApp({
         this.fetchTeacherInfo();
         this.setupSocket();
         window.addEventListener('resize', this.refreshRuleCanvas);
-        this.$nextTick(this.refreshRuleCanvas);
+        this.$nextTick(() => {
+            this.setupRuleCanvasObserver();
+            this.refreshRuleCanvas();
+        });
+    },
+    beforeUnmount() {
+        window.removeEventListener('resize', this.refreshRuleCanvas);
+        if (this.ruleResizeObserver) {
+            this.ruleResizeObserver.disconnect();
+            this.ruleResizeObserver = null;
+        }
     }
 });
 app.mount('#app');
 </script>
 
     <!-- 考试列表模态框 -->
-    <div class="modal" :style="{display: showExamListModal ? 'block' : 'none'}">
+    <div class="modal feature-hidden" :style="{display: showExamListModal ? 'block' : 'none'}">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">
@@ -3964,7 +4032,7 @@ app.mount('#app');
     </div>
 
     <!-- 考试详情模态框 -->
-    <div class="modal" :style="{display: showExamDetailModal ? 'block' : 'none'}">
+    <div class="modal feature-hidden" :style="{display: showExamDetailModal ? 'block' : 'none'}">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">

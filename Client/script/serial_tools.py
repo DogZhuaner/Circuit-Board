@@ -21,6 +21,8 @@ def load_pyserial():
     return serial
 
 class STM32Tool:
+    ACK_OK = bytes([0xF5, 0xF6, 0x02, 0x01, 0x01, 0xF7, 0xF8])
+
     def __init__(self, port='COM4', baudrate=38400, timeout=3):
         # 初始化串口设置
         self.port = port
@@ -51,9 +53,9 @@ class STM32Tool:
 
         # 检查是否收到开启成功的返回
         if self.ser.in_waiting > 0:
-            data = self.ser.read(8)  # 读取返回的8字节数据
+            data = self.ser.read(len(self.ACK_OK))  # 读取返回的7字节确认帧
             print(f"Received data: {data.hex()}")
-            if data == bytearray([0xF5, 0xF6, 0x02, 0x01, 0x01, 0xF7, 0xF8]):
+            if data == self.ACK_OK:
                 print("Detection mode started successfully.")
                 self.close_serial_connection()  # 关闭串口连接
                 return True
@@ -76,9 +78,9 @@ class STM32Tool:
 
         # 检查是否收到关闭成功的返回
         if self.ser.in_waiting > 0:
-            data = self.ser.read(8)  # 读取返回的8字节数据
+            data = self.ser.read(len(self.ACK_OK))  # 读取返回的7字节确认帧
             print(f"Received data: {data.hex()}")
-            if data == bytearray([0xF5, 0xF6, 0x02, 0x01, 0x01, 0xF7, 0xF8]):
+            if data == self.ACK_OK:
                 print("Detection mode stopped successfully.")
                 self.close_serial_connection()  # 关闭串口连接
                 return True

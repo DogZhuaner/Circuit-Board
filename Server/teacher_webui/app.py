@@ -252,6 +252,12 @@ def read_rule_file(filename):
         return safe_name, json.load(f)
 
 
+def db_error_response(default_message='数据库操作失败'):
+    error = getattr(db_connector, 'last_error', None) if db_connector else None
+    message = f'{default_message}：{error}' if error else default_message
+    return jsonify({'success': False, 'message': message}), 500
+
+
 @app.route('/')
 def index():
     """教师主页面"""
@@ -508,59 +514,107 @@ def get_teacher_info():
 
 @app.route('/api/students', methods=['GET'])
 def get_students():
-    """获取所有学生信息"""
-    students = load_students()
-    # 获取排序参数
-    sort_by = request.args.get('sort_by', 'sno')  # 默认按学号排序
+    """Get all student records from the database."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': '数据库连接不可用', 'students': []}), 500
 
-    # 实现排序逻辑
-    if sort_by == 'name':
-        students.sort(key=lambda x: x.get('name', ''))
-    elif sort_by == 'class':
-        students.sort(key=lambda x: x.get('class_name', ''))
-    else:  # 默认按学号排序
-        students.sort(key=lambda x: x.get('sno', ''))
+    sort_by = request.args.get('sort_by', 'sno')
+    sort_columns = {
+        'sno': 's.sno',
+        'student_id': 's.sno',
+        'name': 's.name',
+        'user_id': 's.user_id'
+    }
+    order_column = sort_columns.get(sort_by, 's.sno')
 
-    return jsonify({
-        'students': students,
-        'total': len(students)
-    })
+    rows = db_connector.query(f"""
+        SELECT s.sno, s.name, s.user_id, s.student_password,
+               u.user_no, u.password, u.role
+        FROM student s
+        LEFT JOIN users u ON s.user_id = u.user_id
+        ORDER BY {order_column}
+    """)
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('读取学生列表失败')
+
+    students = []
+    for row in rows:
+        sno, name, user_id, student_password, user_no, user_password, role = row
+        password = student_password or user_password or ''
+        students.append({
+            'id': user_id,
+            'user_id': user_id,
+            'sno': str(sno) if sno is not None else '',
+            'student_id': str(sno) if sno is not None else '',
+            'name': name or '',
+            'student_password': password,
+            'password': password,
+            'user_no': str(user_no) if user_no is not None else '',
+            'role': role or 'student'
+        })
+
+    return jsonify({'success': True, 'students': students, 'total': len(students)})
 
 
 @app.route('/api/student', methods=['POST'])
 def add_student():
-    """添加新学生"""
-    data = request.get_json()
-    sno = data.get('sno')
-    name = data.get('name')
-    class_name = data.get('class_name', '')  # 添加班级信息
+    """Add a student and matching login user."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': '数据库连接不可用'}), 500
 
-    if not sno or not name:
-        return jsonify({
-            'success': False,
-            'message': '学号和姓名不能为空'
-        }), 400
+    data = request.get_json(silent=True) or {}
+    sno = str(data.get('sno') or data.get('student_id') or '').strip()
+    name = str(data.get('name') or '').strip()
+    password = str(data.get('student_password') or data.get('password') or '').strip()
 
-    students = load_students()
-    # 检查学号是否已存在
-    if any(student['sno'] == sno for student in students):
-        return jsonify({
-            'success': False,
-            'message': '学号已存在'
-        }), 400
+    if not sno or not name or not password:
+        return jsonify({'success': False, 'message': '学号、姓名和密码不能为空'}), 400
 
-    students.append({
-        'id': len(students) + 1,
+    duplicate_student = db_connector.query("SELECT user_id FROM student WHERE sno = %s", (sno,))
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('检查学生学号失败')
+    duplicate_user = db_connector.query("SELECT user_id FROM users WHERE user_no = %s", (sno,))
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('检查登录账号失败')
+    if duplicate_student or duplicate_user:
+        return jsonify({'success': False, 'message': '学号已存在'}), 400
+
+    if not db_connector.execute(
+        "INSERT INTO users (user_no, password, role) VALUES (%s, %s, %s)",
+        (sno, password, 'student')
+    ):
+        return db_error_response('创建学生登录账号失败')
+
+    user_id_rows = db_connector.query("SELECT LAST_INSERT_ID()")
+    user_id = user_id_rows[0][0] if user_id_rows else None
+    if not user_id:
+        user_id_rows = db_connector.query(
+            "SELECT user_id FROM users WHERE user_no = %s AND role = %s ORDER BY user_id DESC LIMIT 1",
+            (sno, 'student')
+        )
+        user_id = user_id_rows[0][0] if user_id_rows else None
+    if not user_id:
+        return db_error_response('获取学生用户ID失败')
+
+    if not db_connector.execute(
+        "INSERT INTO student (sno, name, user_id, student_password) VALUES (%s, %s, %s, %s)",
+        (sno, name, user_id, password)
+    ):
+        insert_error = getattr(db_connector, 'last_error', None)
+        db_connector.execute("DELETE FROM users WHERE user_id = %s AND role = %s", (user_id, 'student'))
+        db_connector.last_error = insert_error
+        return db_error_response('创建学生目录失败')
+
+    return jsonify({'success': True, 'message': '学生添加成功', 'student': {
+        'id': user_id,
+        'user_id': user_id,
         'sno': sno,
+        'student_id': sno,
         'name': name,
-        'class_name': class_name  # 添加班级信息
-    })
-    save_students(students)
-
-    return jsonify({
-        'success': True,
-        'message': '学生添加成功'
-    })
+        'student_password': password,
+        'password': password,
+        'role': 'student'
+    }})
 
 
 @app.route('/api/registration_requests', methods=['GET'])
@@ -764,394 +818,408 @@ def reject_registration():
 
 @app.route('/api/student/<int:student_id>', methods=['DELETE'])
 def delete_student(student_id):
-    """删除学生"""
-    students = load_students()
-    students = [student for student in students if student['id'] != student_id]
-    # 重新分配ID以保持连续性
-    for i, student in enumerate(students):
-        student['id'] = i + 1
-    save_students(students)
+    """Delete a student and the matching student login user."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': '数据库连接不可用'}), 500
 
-    return jsonify({
-        'success': True,
-        'message': '学生删除成功'
-    })
+    existing = db_connector.query("SELECT sno FROM student WHERE user_id = %s", (student_id,))
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('查询学生失败')
+    if not existing:
+        return jsonify({'success': False, 'message': '学生不存在'}), 404
+
+    if not db_connector.execute("DELETE FROM student WHERE user_id = %s", (student_id,)):
+        return db_error_response('删除学生目录失败')
+
+    if not db_connector.execute("DELETE FROM users WHERE user_id = %s AND role = %s", (student_id, 'student')):
+        return db_error_response('删除学生登录账号失败')
+
+    return jsonify({'success': True, 'message': '学生删除成功'})
 
 
-# 添加编辑学生信息的路由
+@app.route('/api/student/<int:student_id>', methods=['GET'])
+def get_student(student_id):
+    """Get one student record by users.user_id."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': '数据库连接不可用'}), 500
+
+    rows = db_connector.query("""
+        SELECT s.sno, s.name, s.user_id, s.student_password,
+               u.user_no, u.password, u.role
+        FROM student s
+        LEFT JOIN users u ON s.user_id = u.user_id
+        WHERE s.user_id = %s
+    """, (student_id,))
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('查询学生失败')
+    if not rows:
+        return jsonify({'success': False, 'message': '学生不存在'}), 404
+
+    sno, name, user_id, student_password, user_no, user_password, role = rows[0]
+    password = student_password or user_password or ''
+    return jsonify({'success': True, 'student': {
+        'id': user_id,
+        'user_id': user_id,
+        'sno': str(sno) if sno is not None else '',
+        'student_id': str(sno) if sno is not None else '',
+        'name': name or '',
+        'student_password': password,
+        'password': password,
+        'user_no': str(user_no) if user_no is not None else '',
+        'role': role or 'student'
+    }})
+
+
 @app.route('/api/student/<int:student_id>', methods=['PUT'])
 def edit_student(student_id):
-    """编辑学生信息"""
-    data = request.get_json()
-    sno_new = data.get('sno')
-    name = data.get('name')
-    class_name = data.get('class_name', '')  # 添加班级信息
+    """Update a student and matching login user."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': '数据库连接不可用'}), 500
 
-    if not sno_new or not name:
-        return jsonify({
-            'success': False,
-            'message': '学号和姓名不能为空'
-        }), 400
+    data = request.get_json(silent=True) or {}
+    sno_new = str(data.get('sno') or data.get('student_id') or '').strip()
+    name = str(data.get('name') or '').strip()
+    password = str(data.get('student_password') or data.get('password') or '').strip()
 
-    students = load_students()
+    if not sno_new or not name or not password:
+        return jsonify({'success': False, 'message': '学号、姓名和密码不能为空'}), 400
 
-    # 查找要编辑的学生
-    student_index = None
-    for i, student in enumerate(students):
-        if student['id'] == student_id:
-            student_index = i
-            break
+    existing = db_connector.query("SELECT sno FROM student WHERE user_id = %s", (student_id,))
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('查询学生失败')
+    if not existing:
+        return jsonify({'success': False, 'message': '学生不存在'}), 404
 
-    if student_index is None:
-        return jsonify({
-            'success': False,
-            'message': '学生不存在'
-        }), 404
+    duplicate_student = db_connector.query(
+        "SELECT user_id FROM student WHERE sno = %s AND user_id <> %s",
+        (sno_new, student_id)
+    )
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('检查学生学号失败')
+    duplicate_user = db_connector.query(
+        "SELECT user_id FROM users WHERE user_no = %s AND user_id <> %s",
+        (sno_new, student_id)
+    )
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('检查登录账号失败')
+    if duplicate_student or duplicate_user:
+        return jsonify({'success': False, 'message': '学号已存在'}), 400
 
-    # 检查学号是否已存在
-    for student in students:
-        if student['sno'] == sno_new and student['id'] != student_id:
-            return jsonify({
-                'success': False,
-                'message': '学号已存在'
-            }), 400
+    if not db_connector.execute(
+        "UPDATE users SET user_no = %s, password = %s, role = %s WHERE user_id = %s AND role = %s",
+        (sno_new, password, 'student', student_id, 'student')
+    ):
+        return db_error_response('更新学生登录账号失败')
 
-    # 更新学生信息
-    students[student_index].update({
+    if not db_connector.execute(
+        "UPDATE student SET sno = %s, name = %s, student_password = %s WHERE user_id = %s",
+        (sno_new, name, password, student_id)
+    ):
+        return db_error_response('更新学生目录失败')
+
+    return jsonify({'success': True, 'message': '学生信息更新成功', 'student': {
+        'id': student_id,
+        'user_id': student_id,
         'sno': sno_new,
+        'student_id': sno_new,
         'name': name,
-        'class_name': class_name
-    })
+        'student_password': password,
+        'password': password,
+        'role': 'student'
+    }})
 
-    save_students(students)
 
-    return jsonify({
-        'success': True,
-        'message': '学生信息更新成功'
-    })
+
+def format_db_datetime(value):
+    if value is None:
+        return ''
+    if isinstance(value, datetime):
+        return value.strftime('%Y-%m-%d %H:%M:%S')
+    return str(value)
+
+
+def normalize_datetime_input(value):
+    value = str(value or '').strip()
+    if not value:
+        return value
+    if 'T' in value:
+        value = value.replace('T', ' ')
+    if len(value) == 16:
+        value += ':00'
+    return value
+
+
+def parse_score_value(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def split_knowledge_points(value):
+    if not value:
+        return []
+    text = str(value).replace('\uff0c', ',').replace('\u3001', ',').replace(';', ',').replace('\uff1b', ',')
+    return [item.strip() for item in text.split(',') if item.strip()]
+
+
+def get_effective_teacher_id():
+    config = get_config_module()
+    teacher_id = str(getattr(config['Login_Session'], 'tno', '') or '').strip()
+    if teacher_id:
+        rows = db_connector.query('SELECT tno FROM teacher WHERE tno = %s LIMIT 1', (teacher_id,))
+        if rows:
+            return teacher_id
+
+    rows = db_connector.query('SELECT tno FROM teacher ORDER BY tno LIMIT 1')
+    if rows:
+        return str(rows[0][0])
+    return teacher_id
 
 
 @app.route('/api/student_score/<sno>', methods=['GET'])
 def get_student_score(sno):
-    """获取特定学生的成绩"""
-    # 确保在需要时初始化演示数据
-    if not student_scores:
-        init_demo_data()
-    score = student_scores.get(sno, 0)
-    return jsonify({
-        'sno': sno,
-        'score': score
-    })
+    """Get the latest score for one student from exam_result."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
+
+    rows = db_connector.query(
+        """
+        SELECT test_score, test_name
+        FROM exam_result
+        WHERE student_no = %s
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (sno,)
+    )
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('Failed to load student score')
+
+    score = parse_score_value(rows[0][0]) if rows else 0
+    return jsonify({'success': True, 'sno': sno, 'score': score, 'test_name': rows[0][1] if rows else ''})
 
 
 @app.route('/api/get_score_summary', methods=['GET'])
 def get_score_summary():
-    """获取成绩统计摘要"""
-    # 确保在需要时初始化演示数据
-    if not student_scores:
-        init_demo_data()
+    """Get score statistics from exam_result."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
 
-    if not student_scores:
-        return jsonify({
-            'success': True,
-            'summary': {
-                'average': 0,
-                'highest': 0,
-                'lowest': 0,
-                'total': 0
-            }
-        })
+    rows = db_connector.query('SELECT test_score FROM exam_result')
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('Failed to load score summary')
 
-    scores = list(student_scores.values())
-    return jsonify({
-        'success': True,
-        'summary': {
-            'average': round(sum(scores) / len(scores), 1),
-            'highest': max(scores),
-            'lowest': min(scores),
-            'total': len(scores)
-        }
-    })
+    scores = [parse_score_value(row[0]) for row in rows]
+    if not scores:
+        return jsonify({'success': True, 'summary': {'average': 0, 'highest': 0, 'lowest': 0, 'total': 0}})
+
+    return jsonify({'success': True, 'summary': {
+        'average': round(sum(scores) / len(scores), 1),
+        'highest': max(scores),
+        'lowest': min(scores),
+        'total': len(scores)
+    }})
 
 
 @app.route('/api/get_students_scores', methods=['GET'])
 def get_students_scores():
-    """获取所有学生成绩列表"""
-    # 确保在需要时初始化演示数据
-    if not student_scores:
-        init_demo_data()
+    """Get all student score rows from exam_result."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
 
-    # 基础学生信息
-    base_students = [
-        {'id': 'S001', 'sno': '2024001', 'name': '张三', 'exam_time': '2024-01-15 14:30:00',
-         'duration': '45分钟'},
-        {'id': 'S002', 'sno': '2024002', 'name': '李四', 'exam_time': '2024-01-15 14:35:00',
-         'duration': '38分钟'},
-        {'id': 'S003', 'sno': '2024003', 'name': '王五', 'exam_time': '2024-01-15 14:40:00',
-         'duration': '52分钟'},
-        {'id': 'S004', 'sno': '2024004', 'name': '赵六', 'exam_time': '2024-01-15 14:45:00',
-         'duration': '41分钟'},
-        {'id': 'S005', 'sno': '2024005', 'name': '钱七', 'exam_time': '2024-01-15 14:50:00',
-         'duration': '35分钟'},
-        {'id': 'S006', 'sno': '2024006', 'name': '孙八', 'exam_time': '2024-01-15 14:55:00',
-         'duration': '48分钟'},
-        {'id': 'S007', 'sno': '2024007', 'name': '周九', 'exam_time': '2024-01-15 15:00:00',
-         'duration': '55分钟'},
-        {'id': 'S008', 'sno': '2024008', 'name': '吴十', 'exam_time': '2024-01-15 15:05:00',
-         'duration': '42分钟'},
-        {'id': 'S009', 'sno': '2024009', 'name': '郑十一', 'exam_time': '2024-01-15 15:10:00',
-         'duration': '44分钟'},
-        {'id': 'S010', 'sno': '2024010', 'name': '王十二', 'exam_time': '2024-01-15 15:15:00',
-         'duration': '47分钟'}
-    ]
+    rows = db_connector.query(
+        """
+        SELECT er.id, er.student_no, COALESCE(s.name, er.student_name), er.test_score,
+               er.test_name, er.knowledge, et.publish_time
+        FROM exam_result er
+        LEFT JOIN student s ON CAST(er.student_no AS UNSIGNED) = s.sno
+        LEFT JOIN exam_test et ON CAST(er.test_id AS UNSIGNED) = et.test_id
+        ORDER BY er.id DESC
+        """
+    )
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('Failed to load student scores')
 
-    # 添加每个学生的错误知识点
-    student_weak_points = {
-        'S001': ['电机控制', '电路分析'],
-        'S002': ['安全规范', '故障诊断'],
-        'S003': ['PLC编程', '电机控制'],
-        'S004': ['电路分析', '安全规范'],
-        'S005': ['故障诊断', 'PLC编程'],
-        'S006': ['电机控制', '安全规范'],
-        'S007': ['电路分析', '故障诊断'],
-        'S008': ['PLC编程', '电机控制'],
-        'S009': ['安全规范', 'PLC编程'],
-        'S010': ['故障诊断', '电路分析']
-    }
+    students = []
+    for row in rows:
+        students.append({
+            'id': row[0],
+            'sno': str(row[1] or ''),
+            'student_id': str(row[1] or ''),
+            'name': row[2] or '',
+            'score': parse_score_value(row[3]),
+            'subject': row[4] or 'Wiring exam',
+            'test_name': row[4] or '',
+            'exam_time': format_db_datetime(row[6]),
+            'weak_points': split_knowledge_points(row[5])
+        })
 
-    # 将实际成绩数据和错误知识点合并到学生信息中
-    students_data = []
-    for student in base_students:
-        student_id = student['id']
-        score = student_scores.get(student_id, 0)  # 从实际成绩数据中获取分数
-        student['score'] = score
-        student['weak_points'] = student_weak_points.get(student_id, [])  # 添加错误知识点
-        students_data.append(student)
-
-    return jsonify({
-        'success': True,
-        'students': students_data
-    })
+    return jsonify({'success': True, 'students': students, 'total': len(students)})
 
 
 @app.route('/api/get_score_distribution', methods=['GET'])
 def get_score_distribution():
-    """获取成绩分布数据"""
-    # 确保在需要时初始化演示数据
-    if not student_scores:
-        init_demo_data()
+    """Get score distribution from exam_result."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
 
-    distribution = [
-        {'range': '90-100分', 'count': 3},
-        {'range': '80-89分', 'count': 4},
-        {'range': '70-79分', 'count': 2},
-        {'range': '60-69分', 'count': 1},
-        {'range': '0-59分', 'count': 0}
+    rows = db_connector.query('SELECT test_score FROM exam_result')
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('Failed to load score distribution')
+
+    buckets = [
+        {'range': '90-100', 'count': 0},
+        {'range': '80-89', 'count': 0},
+        {'range': '70-79', 'count': 0},
+        {'range': '60-69', 'count': 0},
+        {'range': '0-59', 'count': 0},
     ]
+    for row in rows:
+        score = parse_score_value(row[0])
+        if score >= 90:
+            buckets[0]['count'] += 1
+        elif score >= 80:
+            buckets[1]['count'] += 1
+        elif score >= 70:
+            buckets[2]['count'] += 1
+        elif score >= 60:
+            buckets[3]['count'] += 1
+        else:
+            buckets[4]['count'] += 1
 
-    return jsonify({
-        'success': True,
-        'distribution': distribution
-    })
+    return jsonify({'success': True, 'distribution': buckets})
+
+
+@app.route('/api/get_weak_knowledge_points', methods=['GET'])
+def get_weak_knowledge_points():
+    """Summarize weak knowledge points from exam_result.knowledge."""
+    if not db_connector:
+        return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
+
+    rows = db_connector.query('SELECT knowledge FROM exam_result WHERE knowledge IS NOT NULL AND knowledge <> ""')
+    if getattr(db_connector, 'last_error', None):
+        return db_error_response('Failed to load weak knowledge points')
+
+    counts = {}
+    total = 0
+    for row in rows:
+        points = split_knowledge_points(row[0])
+        total += 1
+        for point in points:
+            counts[point] = counts.get(point, 0) + 1
+
+    result = [
+        {'point': point, 'errorRate': round(count / total * 100, 1) if total else 0, 'count': count}
+        for point, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    ]
+    return jsonify({'success': True, 'points': result})
+
 
 
 @app.route('/api/create_exam', methods=['POST'])
 def create_exam():
-    """创建新考试"""
+    """Create a new exam in exam_test."""
     try:
-        data = request.get_json()
+        if not DB_AVAILABLE or db_connector is None:
+            return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
 
-        # 验证必填字段
+        data = request.get_json(silent=True) or {}
         required_fields = ['test_name', 'test_type', 'duration_minutes', 'publish_time', 'deadline_time']
         for field in required_fields:
-            if field not in data or not data[field]:
-                return jsonify({
-                    'success': False,
-                    'message': f'{field} 不能为空'
-                }), 400
+            if not data.get(field):
+                return jsonify({'success': False, 'message': f'{field} is required'}), 400
 
-        # 获取当前教师信息
-        config = get_config_module()
-        teacher_id = config['Login_Session'].tno
-
-        if not teacher_id:
-            return jsonify({
-                'success': False,
-                'message': '未找到教师信息'
-            }), 400
-
-        # 检查数据库连接
-        if not DB_AVAILABLE or db_connector is None:
-            return jsonify({
-                'success': False,
-                'message': '数据库连接不可用'
-            }), 500
-
-        # 插入考试信息到exam_test表
-        sql = """
-        INSERT INTO exam_test (
-            test_name, test_type, duration_minutes, 
-            publish_time, deadline_time, teacher_id
-        ) VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        params = (
-            data['test_name'],
-            data['test_type'],
-            data['duration_minutes'],
-            data['publish_time'],
-            data['deadline_time'],
-            teacher_id
-        )
-
-        success = db_connector.execute(sql, params)
-
-        if not success:
-            return jsonify({
-                'success': False,
-                'message': '创建考试失败'
-            }), 500
-
-        # 获取刚刚插入的考试ID
         try:
-            # 尝试使用MySQL的LAST_INSERT_ID()函数获取最后插入的ID
-            last_insert_id_result = db_connector.query("SELECT LAST_INSERT_ID()")
-            if last_insert_id_result and len(last_insert_id_result) > 0:
-                exam_id = last_insert_id_result[0][0]
-            else:
-                raise Exception("无法获取插入的考试ID")
-        except Exception as e:
-            print(f"获取考试ID失败：{e}")
-            return jsonify({
-                'success': False,
-                'message': f'获取考试ID失败：{str(e)}'
-            }), 500
+            duration_minutes = int(data['duration_minutes'])
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'duration_minutes must be an integer'}), 400
+        if duration_minutes <= 0:
+            return jsonify({'success': False, 'message': 'duration_minutes must be greater than 0'}), 400
 
-        return jsonify({
-            'success': True,
-            'exam_id': exam_id,
-            'message': '考试创建成功'
-        })
-    except Exception as e:
-        print(f"创建考试失败：{e}")
-        return jsonify({
-            'success': False,
-            'message': f'创建考试失败：{str(e)}'
-        }), 500
+        teacher_id = get_effective_teacher_id()
+        if not teacher_id:
+            return jsonify({'success': False, 'message': 'No teacher account is available'}), 400
+
+        publish_time = normalize_datetime_input(data['publish_time'])
+        deadline_time = normalize_datetime_input(data['deadline_time'])
+
+        success = db_connector.execute(
+            """
+            INSERT INTO exam_test (test_name, test_type, duration_minutes, publish_time, deadline_time, teacher_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (data['test_name'].strip(), data['test_type'].strip(), duration_minutes, publish_time, deadline_time, teacher_id)
+        )
+        if not success:
+            return db_error_response('Failed to create exam')
+
+        rows = db_connector.query('SELECT LAST_INSERT_ID()')
+        exam_id = rows[0][0] if rows else None
+        if not exam_id:
+            rows = db_connector.query(
+                'SELECT test_id FROM exam_test WHERE teacher_id = %s ORDER BY test_id DESC LIMIT 1',
+                (teacher_id,)
+            )
+            exam_id = rows[0][0] if rows else None
+        if not exam_id:
+            return db_error_response('Failed to get exam ID')
+
+        return jsonify({'success': True, 'exam_id': exam_id, 'message': 'Exam created successfully'})
+    except Exception as exc:
+        return jsonify({'success': False, 'message': f'Failed to create exam: {exc}'}), 500
 
 
 @app.route('/api/get_exams', methods=['GET'])
 def get_exams():
-    """获取考试列表"""
+    """Get exam list from exam_test."""
     try:
-        # 获取当前教师信息
-        config = get_config_module()
-        teacher_id = config['Login_Session'].tno
-
-        if not teacher_id:
-            return jsonify({
-                'success': False,
-                'message': '未找到教师信息'
-            }), 400
-
-        # 检查数据库连接
         if not DB_AVAILABLE or db_connector is None:
-            # 如果数据库不可用，返回模拟数据
-            # 创建模拟教师信息
-            teacher_info = {
-                'tno': teacher_id,
-                'teacher_name': '模拟教师'
-            }
+            return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
 
-            exams = [
-                {
-                    'id': 'EXAM_001',
-                    'name': '电机正反转控制电路考试',
-                    'test_name': '电机正反转控制电路考试',  # 确保同时有name和test_name字段
-                    'type': '实操考试',
-                    'test_type': '实操考试',  # 确保同时有type和test_type字段
-                    'duration': 60,
-                    'duration_minutes': 60,  # 确保同时有duration和duration_minutes字段
-                    'publish_time': '2024-01-15 14:00:00',
-                    'deadline_time': '2024-01-15 16:00:00',
-                    'create_time': '2024-01-10 09:00:00',
-                    'update_time': '2024-01-10 09:00:00',
-                    'teacher_info': teacher_info  # 添加教师信息
-                },
-                {
-                    'id': 'EXAM_002',
-                    'name': '星三角降压启动电路考试',
-                    'test_name': '星三角降压启动电路考试',  # 确保同时有name和test_name字段
-                    'type': '实操考试',
-                    'test_type': '实操考试',  # 确保同时有type和test_type字段
-                    'duration': 90,
-                    'duration_minutes': 90,  # 确保同时有duration和duration_minutes字段
-                    'publish_time': '2024-01-20 09:00:00',
-                    'deadline_time': '2024-01-20 11:30:00',
-                    'create_time': '2024-01-15 15:30:00',
-                    'update_time': '2024-01-15 15:30:00',
-                    'teacher_info': teacher_info  # 添加教师信息
-                }
-            ]
-            return jsonify({
-                'success': True,
-                'exams': exams,
-                'message': '使用模拟数据，数据库连接不可用',
-                'teacher_info': teacher_info  # 同时在顶层返回教师信息
-            })
-
-        # 从数据库查询该教师创建的考试
-        # 首先查询当前教师的信息
-        sql_teacher = """
-        SELECT tno, name FROM teacher WHERE tno = %s
-        """
-        teacher_result = db_connector.query(sql_teacher, (teacher_id,))
+        teacher_id = get_effective_teacher_id()
         teacher_info = None
-        if teacher_result and len(teacher_result) > 0:
-            teacher_info = {
-                'tno': teacher_result[0][0],
-                'teacher_name': teacher_result[0][1]
-            }
+        if teacher_id:
+            teacher_rows = db_connector.query('SELECT tno, name FROM teacher WHERE tno = %s LIMIT 1', (teacher_id,))
+            if teacher_rows:
+                teacher_info = {'tno': str(teacher_rows[0][0]), 'teacher_name': teacher_rows[0][1]}
 
-        # 然后查询考试信息
         sql = """
-        SELECT test_id, test_name, test_type, duration_minutes, 
-               publish_time, deadline_time, create_time, update_time 
-        FROM exam_test 
-        WHERE teacher_id = %s 
-        ORDER BY publish_time DESC
+            SELECT e.test_id, e.test_name, e.test_type, e.duration_minutes,
+                   e.publish_time, e.deadline_time, e.create_time, e.update_time,
+                   e.teacher_id, t.name
+            FROM exam_test e
+            LEFT JOIN teacher t ON CAST(e.teacher_id AS UNSIGNED) = t.tno
+            ORDER BY e.publish_time DESC, e.test_id DESC
         """
-        results = db_connector.query(sql, (teacher_id,))
+        rows = db_connector.query(sql)
+        if getattr(db_connector, 'last_error', None):
+            return db_error_response('Failed to load exams')
 
-        # 格式化结果
         exams = []
-        for row in results:
+        for row in rows:
+            row_teacher_info = {
+                'tno': str(row[8] or ''),
+                'teacher_name': row[9] or (teacher_info or {}).get('teacher_name', 'Unknown')
+            }
             exams.append({
                 'id': row[0],
                 'name': row[1],
-                'test_name': row[1],  # 确保同时有name和test_name字段
+                'test_name': row[1],
                 'type': row[2],
-                'test_type': row[2],  # 确保同时有type和test_type字段
+                'test_type': row[2],
                 'duration': row[3],
-                'duration_minutes': row[3],  # 确保同时有duration和duration_minutes字段
-                'publish_time': row[4].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[4], datetime) else str(row[4]),
-                'deadline_time': row[5].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[5], datetime) else str(row[5]),
-                'create_time': row[6].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[6], datetime) else str(row[6]),
-                'update_time': row[7].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[7], datetime) else str(row[7]),
-                'teacher_info': teacher_info  # 添加教师信息
+                'duration_minutes': row[3],
+                'publish_time': format_db_datetime(row[4]),
+                'deadline_time': format_db_datetime(row[5]),
+                'create_time': format_db_datetime(row[6]),
+                'update_time': format_db_datetime(row[7]),
+                'teacher_info': row_teacher_info
             })
 
-        return jsonify({
-            'success': True,
-            'exams': exams,
-            'total': len(exams),
-            'teacher_info': teacher_info  # 同时在顶层返回教师信息
-        })
-    except Exception as e:
-        print(f"获取考试列表失败：{e}")
-        return jsonify({
-            'success': False,
-            'message': f'获取考试列表失败：{str(e)}'
-        }), 500
+        return jsonify({'success': True, 'exams': exams, 'total': len(exams), 'teacher_info': teacher_info})
+    except Exception as exc:
+        return jsonify({'success': False, 'message': f'Failed to load exams: {exc}'}), 500
 
 
 @socketio.on('connect')
@@ -1234,24 +1302,6 @@ def stop_rule_server():
             'success': False,
             'message': f'停止失败: {str(e)}'
         }), 500
-
-
-@app.route('/api/get_weak_knowledge_points', methods=['GET'])
-def get_weak_knowledge_points():
-    """获取学生易错知识点统计数据"""
-    # 模拟易错知识点数据
-    weak_points_data = [
-        {'point': '电机控制', 'errorRate': 75},
-        {'point': '电路分析', 'errorRate': 68},
-        {'point': '安全规范', 'errorRate': 62},
-        {'point': '故障诊断', 'errorRate': 55},
-        {'point': 'PLC编程', 'errorRate': 48}
-    ]
-
-    return jsonify({
-        'success': True,
-        'weak_points': weak_points_data
-    })
 
 
 if __name__ == '__main__':

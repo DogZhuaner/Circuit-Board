@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import threading
 import time
 import uuid
@@ -105,6 +106,7 @@ last_report_result: Dict[str, Any] = {}
 state_lock = threading.Lock()
 active_session_id: Optional[str] = None
 session_states: Dict[str, Dict[str, Any]] = {}
+EMPTY_WIRING_RESULT: Dict[str, Any] = {"pairs": [], "connected": []}
 
 
 def iso_now() -> str:
@@ -170,6 +172,7 @@ def new_session_state(session_id: str, payload: Optional[Dict[str, Any]] = None)
         "airSwitchClosed": True,
         "errorWiringCount": 0,
         "wiringResults": [],
+        "wiringEvents": [],
         "last_signature": None,
         "last_error_wiring_count": 0,
     }
@@ -181,6 +184,14 @@ def get_or_create_session_state(session_id: str, payload: Optional[Dict[str, Any
     return session_states[session_id]
 
 
+def reset_wiring_result_files() -> None:
+    payload = json.dumps(EMPTY_WIRING_RESULT, ensure_ascii=False, indent=2)
+    for result_path in (Global_Config.new_result_json, Global_Config.old_result_json):
+        path = Path(result_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8")
+
+
 def reset_global_detection_state() -> None:
     Global_Config.total_score = 0
     Global_Config.current_session_score = 0
@@ -189,6 +200,8 @@ def reset_global_detection_state() -> None:
     Global_Config.wired_status = ""
     Global_Config.error_wiring_count = 0
     Global_Config.wiring_results = []
+    Global_Config.current_wiring_events = []
+    reset_wiring_result_files()
 
 
 def next_event_id(session_state: Dict[str, Any]) -> int:
@@ -278,6 +291,8 @@ def current_wiring_event_locked(session_state: Dict[str, Any]) -> Dict[str, Any]
         "contact_A": session_state.get("contact_A", ""),
         "contact_B": session_state.get("contact_B", ""),
         "wired_status": session_state.get("wired_status", ""),
+        "wiringEvents": session_state.get("wiringEvents", []),
+        "wiringResults": session_state.get("wiringResults", []),
         "timestamp": session_state.get("timestamp", ""),
     }
 
@@ -301,6 +316,36 @@ def sync_gateway_event_from_global(session_id: Optional[str] = None) -> Dict[str
         wired_status = normalize_wired_status(Global_Config.wired_status)
         error_count = Global_Config.error_wiring_count
         session_state["airSwitchClosed"] = Global_Config.switch_status
+        wiring_events = []
+        for event in getattr(Global_Config, "current_wiring_events", []) or []:
+            if not isinstance(event, dict):
+                continue
+            event_a = str(event.get("contact_A") or event.get("end1") or "")
+            event_b = str(event.get("contact_B") or event.get("end2") or "")
+            event_status = normalize_wired_status(event.get("wired_status") or wired_status)
+            event_score = event.get("score", 0)
+            if event_a and event_b:
+                wiring_events.append(
+                    {
+                        "contact_A": event_a,
+                        "contact_B": event_b,
+                        "end1": event_a,
+                        "end2": event_b,
+                        "wired_status": event_status,
+                        "score": event_score,
+                    }
+                )
+        if not wiring_events and contact_a and contact_b and wired_status in {"add", "sub", "error"}:
+            wiring_events.append(
+                {
+                    "contact_A": contact_a,
+                    "contact_B": contact_b,
+                    "end1": contact_a,
+                    "end2": contact_b,
+                    "wired_status": wired_status,
+                    "score": score,
+                }
+            )
 
         if error_count > int(session_state.get("last_error_wiring_count") or 0):
             session_state.update(
@@ -309,6 +354,7 @@ def sync_gateway_event_from_global(session_id: Optional[str] = None) -> Dict[str
                     "contact_A": "",
                     "contact_B": "",
                     "wired_status": "error",
+                    "wiringEvents": [],
                     "errorWiringCount": error_count,
                     "last_error_wiring_count": error_count,
                     "last_signature": ("error", error_count, score),
@@ -317,7 +363,11 @@ def sync_gateway_event_from_global(session_id: Optional[str] = None) -> Dict[str
             next_event_id(session_state)
             return current_wiring_event_locked(session_state)
 
-        signature = (score, contact_a, contact_b, wired_status)
+        events_signature = tuple(
+            (event["contact_A"], event["contact_B"], event["wired_status"], event.get("score", 0))
+            for event in wiring_events
+        )
+        signature = (score, contact_a, contact_b, wired_status, events_signature)
         if (
             wired_status in {"add", "sub", "error"}
             and signature != session_state.get("last_signature")
@@ -330,6 +380,7 @@ def sync_gateway_event_from_global(session_id: Optional[str] = None) -> Dict[str
                     "wired_status": wired_status,
                     "errorWiringCount": error_count,
                     "wiringResults": Global_Config.wiring_results.copy(),
+                    "wiringEvents": wiring_events,
                     "last_error_wiring_count": error_count,
                     "last_signature": signature,
                 }
@@ -500,6 +551,15 @@ def stm_tool(port=None, baudrate=None, timeout=None):
     )
 
 
+def stm_tool_from_payload(payload: Optional[Dict[str, Any]] = None):
+    payload = payload or {}
+    return stm_tool(
+        port=payload.get("stm_port") or payload.get("port"),
+        baudrate=payload.get("stm_baud") or payload.get("baudrate"),
+        timeout=payload.get("stm_timeout") or payload.get("timeout"),
+    )
+
+
 def build_wiring_status(extra: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
     raw_wiring = get_current_raw_wiring_result()
     target_session_id = session_id or get_request_session_id()
@@ -609,32 +669,75 @@ def post_to_server(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 def maybe_score_stm32_result(connections: Any) -> Dict[str, Any]:
     from script.calculate_score import evaluate_pairs
     from script.deal_StmResult import generate_by_name_json
+    from script.update_pairs import diff_json_pairs
 
+    old_result_path = Path(Global_Config.old_result_json)
+    if not old_result_path.exists():
+        old_result_path.parent.mkdir(parents=True, exist_ok=True)
+        old_result_path.write_text(
+            json.dumps(EMPTY_WIRING_RESULT, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     named_result = generate_by_name_json(
         connections,
         Global_Config.label_csv,
         Global_Config.new_result_json,
         print_console=False,
     )
+    add_pairs, undo_pairs = diff_json_pairs(
+        Global_Config.old_result_json,
+        Global_Config.new_result_json,
+    )
     score_result = evaluate_pairs(
         str(Global_Config.new_result_json),
         str(Global_Config.test_rule),
         print_console=False,
     )
+    matched_scores = {
+        tuple(sorted((str(item["pair"][0]), str(item["pair"][1])))): item.get("score", 0)
+        for item in score_result.get("matched", [])
+        if isinstance(item.get("pair"), list) and len(item["pair"]) == 2
+    }
+    current_events = [
+        {
+            "contact_A": pair[0],
+            "contact_B": pair[1],
+            "wired_status": "add",
+            "score": matched_scores.get(tuple(sorted((str(pair[0]), str(pair[1])))), 0),
+        }
+        for pair in add_pairs
+    ] + [
+        {
+            "contact_A": pair[0],
+            "contact_B": pair[1],
+            "wired_status": "sub",
+            "score": 0,
+        }
+        for pair in undo_pairs
+    ]
 
     Global_Config.total_score = score_result.get("total_score", Global_Config.total_score)
     Global_Config.current_session_score = Global_Config.total_score
-    if named_result.get("pairs"):
-        current_pair = named_result["pairs"][-1]
-        if len(current_pair) >= 2:
-            Global_Config.current_A = current_pair[0]
-            Global_Config.current_B = current_pair[1]
-    Global_Config.wired_status = "matched" if score_result.get("matched_count", 0) else "unmatched"
     Global_Config.wiring_results = named_result.get("pairs", [])
+    Global_Config.current_wiring_events = current_events
+    if current_events:
+        last_event = current_events[-1]
+        Global_Config.current_A = last_event["contact_A"]
+        Global_Config.current_B = last_event["contact_B"]
+        Global_Config.wired_status = last_event["wired_status"]
+    else:
+        Global_Config.current_A = ""
+        Global_Config.current_B = ""
+        Global_Config.wired_status = "no_change"
+    Path(Global_Config.old_result_json).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(Global_Config.new_result_json, Global_Config.old_result_json)
 
     return {
         "named_result": named_result,
         "score_result": score_result,
+        "add_pairs": add_pairs,
+        "undo_pairs": undo_pairs,
+        "wiring_events": current_events,
     }
 
 
@@ -700,14 +803,50 @@ def start_yolo():
             }
         )
 
+    stm_started = False
     try:
+        matrix_tool = stm_tool_from_payload(payload)
+        stm_started = matrix_tool.start_detection_mode()
+        if not stm_started:
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "STM32矩阵检测模式开启失败，未启动接线检测",
+                    "session_id": session_id,
+                    "running": False,
+                }
+            ), 500
+
         reset_global_detection_state()
+        with state_lock:
+            session_states[session_id] = new_session_state(session_id, payload)
+        active_session_id = session_id
+
+        initial_connections = matrix_tool.query_and_parse()
+        if matrix_tool.last_query_status != "ok":
+            rollback: Dict[str, Any] = {}
+            try:
+                rollback["stm32_stopped"] = bool(stm_tool_from_payload(payload).stop_detection_mode())
+            except Exception as stop_exc:
+                rollback["stm32_stop_error"] = str(stop_exc)
+            active_session_id = None
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"STM32矩阵初始读取失败：{matrix_tool.last_query_status or 'unknown'}",
+                    "session_id": session_id,
+                    "running": False,
+                    "stm32": {"detection_mode": "started", "query_status": matrix_tool.last_query_status},
+                    "rollback": rollback,
+                }
+            ), 500
+        initial_scoring = maybe_score_stm32_result(initial_connections)
+        initial_event = sync_gateway_event_from_global(session_id)
+
         module = load_detection_module()
         detector, detection_thread = module.start_hand_detection()
         detection_started_at = iso_now()
-        active_session_id = session_id
         with state_lock:
-            session_states[session_id] = new_session_state(session_id, payload)
             session_states[session_id]["running"] = True
         return jsonify(
             {
@@ -715,6 +854,13 @@ def start_yolo():
                 "message": "检测已启动",
                 "session_id": session_id,
                 "running": True,
+                "stm32": {
+                    "detection_mode": "started",
+                    "initial_query_status": matrix_tool.last_query_status,
+                    "initial_connections_count": len(initial_connections),
+                },
+                "initial_scoring": initial_scoring,
+                "initial_event": initial_event,
                 "context": compact_dict(runtime_context.copy()),
                 "rule_filename": get_rule_filename(),
             }
@@ -723,7 +869,21 @@ def start_yolo():
         detector = None
         detection_thread = None
         detection_started_at = None
-        return jsonify({"success": False, "message": f"启动失败: {exc}", "running": False}), 500
+        active_session_id = None
+        rollback: Dict[str, Any] = {}
+        if stm_started:
+            try:
+                rollback["stm32_stopped"] = bool(stm_tool_from_payload(payload).stop_detection_mode())
+            except Exception as stop_exc:
+                rollback["stm32_stop_error"] = str(stop_exc)
+        return jsonify(
+            {
+                "success": False,
+                "message": f"启动失败: {exc}",
+                "running": False,
+                **({"rollback": rollback} if rollback else {}),
+            }
+        ), 500
 
 
 @app.route("/api/yolo/stop", methods=["POST"])
@@ -759,6 +919,19 @@ def stop_yolo():
         ), 409
 
     try:
+        matrix_tool = stm_tool_from_payload(payload)
+        stm_stopped = matrix_tool.stop_detection_mode()
+        if not stm_stopped:
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "STM32矩阵检测模式关闭失败，未停止接线检测",
+                    "session_id": session_id,
+                    "active_session_id": active_session_id,
+                    "running": is_detector_running(),
+                }
+            ), 500
+
         latest_event = sync_gateway_event_from_global(session_id)
         module = load_detection_module()
         module.stop_hand_detection()
@@ -776,6 +949,7 @@ def stop_yolo():
             "session_id": session_id,
             "score": latest_event.get("score", session_state.get("score", 0)),
             "running": False,
+            "stm32": {"detection_mode": "stopped"},
         }
         if payload.get("submit_exam_result"):
             report_payload = build_exam_report_payload(payload.get("exam_result") or {})
@@ -971,11 +1145,7 @@ def report_exam_result():
 @app.route("/api/stm/start", methods=["POST"])
 def stm_start():
     payload = request.get_json(silent=True) or {}
-    tool = stm_tool(
-        port=payload.get("port"),
-        baudrate=payload.get("baudrate"),
-        timeout=payload.get("timeout"),
-    )
+    tool = stm_tool_from_payload(payload)
     try:
         ok = tool.start_detection_mode()
         if ok:
@@ -988,11 +1158,7 @@ def stm_start():
 @app.route("/api/stm/stop", methods=["POST"])
 def stm_stop():
     payload = request.get_json(silent=True) or {}
-    tool = stm_tool(
-        port=payload.get("port"),
-        baudrate=payload.get("baudrate"),
-        timeout=payload.get("timeout"),
-    )
+    tool = stm_tool_from_payload(payload)
     try:
         ok = tool.stop_detection_mode()
         if ok:

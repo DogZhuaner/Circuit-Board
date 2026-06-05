@@ -15,6 +15,9 @@ class Global_Config:
     label_csv = str(ProjectRoot/'data'/'label.csv')
     new_result_json = ProjectRoot / 'data' / 'result' / 'new'/ "result.json"
     old_result_json = ProjectRoot / 'data' / 'result' / 'old'/ "result.json"
+    # 兼容旧脚本中的 *_json_path 命名。
+    new_result_json_path = new_result_json
+    old_result_json_path = old_result_json
     #weights
     Hand_and_switch = ProjectRoot/'weights'/'hand_and_switch.pt'
 
@@ -33,6 +36,7 @@ class Global_Config:
     current_A = ""     #当前触点A
     current_B = ""     #当前触点B
     wiring_results = []           # 接线结果历史
+    current_wiring_events = []     # 当前批次新增/撤销接线事件
     score_history = []            # 分数历史记录
     is_first_score = False
 

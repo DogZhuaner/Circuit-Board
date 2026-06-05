@@ -84,7 +84,7 @@ class YoloDetector:
         self._snapshot_done_this_absence: bool = False  # 当前这次“消失周期”是否已经截过图
 
     def _ensure_old_result_exists(self):
-        old_path = Path(Global_Config.old_result_json_path)
+        old_path = Path(Global_Config.old_result_json)
         if old_path.exists():
             return
         old_path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,15 +97,30 @@ class YoloDetector:
         Global_Config.total_score = score_result.get("total_score", Global_Config.total_score)
         Global_Config.current_session_score = Global_Config.total_score
         Global_Config.wiring_results = named_result.get("pairs", [])
+        matched_scores = {
+            tuple(sorted((str(item["pair"][0]), str(item["pair"][1])))): item.get("score", 0)
+            for item in score_result.get("matched", [])
+            if isinstance(item.get("pair"), list) and len(item["pair"]) == 2
+        }
+        current_events = [
+            {
+                "contact_A": pair[0],
+                "contact_B": pair[1],
+                "wired_status": "add",
+                "score": matched_scores.get(tuple(sorted((str(pair[0]), str(pair[1])))), 0),
+            }
+            for pair in add_pairs
+        ] + [
+            {"contact_A": pair[0], "contact_B": pair[1], "wired_status": "sub", "score": 0}
+            for pair in undo_pairs
+        ]
+        Global_Config.current_wiring_events = current_events
 
-        if add_pairs:
-            Global_Config.current_A = add_pairs[-1][0]
-            Global_Config.current_B = add_pairs[-1][1]
-            Global_Config.wired_status = "add"
-        elif undo_pairs:
-            Global_Config.current_A = undo_pairs[-1][0]
-            Global_Config.current_B = undo_pairs[-1][1]
-            Global_Config.wired_status = "sub"
+        if current_events:
+            last_event = current_events[-1]
+            Global_Config.current_A = last_event["contact_A"]
+            Global_Config.current_B = last_event["contact_B"]
+            Global_Config.wired_status = last_event["wired_status"]
         else:
             Global_Config.current_A = ""
             Global_Config.current_B = ""
@@ -142,7 +157,7 @@ class YoloDetector:
                 print_console=True,
             )
             add_pairs, undo_pairs = diff_json_pairs(
-                Global_Config.old_result_json_path,
+                Global_Config.old_result_json,
                 Global_Config.new_result_json,
             )
             score_result = evaluate_pairs(
@@ -155,8 +170,8 @@ class YoloDetector:
             print(f"[INFO] 撤去接线对：{undo_pairs}")
             print(f"[INFO] 当前接线总分：{Global_Config.total_score}")
 
-            Path(Global_Config.old_result_json_path).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(Global_Config.new_result_json, Global_Config.old_result_json_path)
+            Path(Global_Config.old_result_json).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(Global_Config.new_result_json, Global_Config.old_result_json)
         except Exception as exc:
             print(f"[ERROR] STM32 结果转换或评分失败：{exc}")
 

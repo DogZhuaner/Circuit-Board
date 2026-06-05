@@ -66,7 +66,7 @@ TEACHER_WEB_CONFIG = {
 }
 
 DB_CONFIG = {
-    "host": _env("DB_HOST", "127.0.0.1"),
+    "host": _env("DB_HOST", "192.168.1.130"),
     "port": _env_int("DB_PORT", 3306),
     "user": _env("DB_USER", "admin"),
     "password": _env("DB_PASSWORD", "a214a214"),
@@ -85,7 +85,7 @@ RULE_SERVER_CONFIG = {
 }
 
 OLLAMA_CHAT_DEFAULTS = {
-    "host": _env("OLLAMA_CHAT_HOST", "127.0.0.1"),
+    "host": _env("OLLAMA_CHAT_HOST", "192.168.1.130"),
     "port": _env_int("OLLAMA_CHAT_PORT", 11434),
     "model": _env("OLLAMA_CHAT_MODEL", "qwen2.5:1.5b"),
 }
