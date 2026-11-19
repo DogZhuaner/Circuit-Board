@@ -12,11 +12,17 @@
     .board {max-height:60vh;overflow:auto}
     .controls {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
     input[type=range] {flex:1;min-width:8rem;accent-color:#187348}
+    .embedded {background:#f8fafc;color:#25334a}
+    .embedded main {padding:0}
+    .embedded article {padding:.75rem;border-color:#dbe3ee}
+    .embedded .board {max-height:48vh}
   </style>
 </head>
-<body><main>
-  <a href="{{ url_for('student_scores') }}" class="link-success">← 返回成绩可视化</a>
-  <h1 class="h3 my-3">{{ name }} · 接线回顾</h1>
+<body{% if not scores_url %} class="embedded"{% endif %}><main>
+  {% if scores_url %}
+    <a href="{{ scores_url }}" class="link-success">← 返回成绩可视化</a>
+    <h1 class="h3 my-3">{{ name }} · 接线回顾</h1>
+  {% endif %}
   <article>
     <p>学号 {{ record.metadata.student_no }}　考试编号 {{ record.metadata.test_id }}{% if record.metadata.simulated is sameas true %}　<span class="badge text-bg-secondary">模拟记录</span>{% endif %}</p>
     <div class="board"><canvas id="board" aria-label="端子连接示意图"></canvas></div>

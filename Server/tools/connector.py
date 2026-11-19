@@ -11,7 +11,8 @@ class MySQLConnector:
 
     def connect(self):
         try:
-            self.connection = mysql.connector.connect(**self.config)
+            # This connector commits individual operations. Fresh reads must reflect withdrawn exam scores.
+            self.connection = mysql.connector.connect(**{**self.config, "autocommit": True})
             if self.connection.is_connected():
                 print("✅ 数据库连接成功")
         except Error as e:

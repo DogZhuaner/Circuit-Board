@@ -2,7 +2,7 @@ import os
 import sys
 import json
 from datetime import datetime
-from flask import abort, Flask, render_template, jsonify, request, send_file
+from flask import abort, Flask, render_template, jsonify, request, send_file, session
 from flask_socketio import SocketIO
 
 # 添加项目根目录到Python路径
@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../s
 
 from itsdangerous import BadSignature
 from exam_results import exam_result
-from exam_access import ExamEntryError, exam_ticket, require_open_exam
+from exam_access import ExamEntryError, exam_ticket, exam_rule_ticket, require_open_exam
 from global_config import Global_Config
 try:
     from script.detect_SwtichHand import start_hand_detection, stop_hand_detection
@@ -144,7 +144,7 @@ def get_score_visualizer():
 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = STUDENT_WEB_CONFIG["secret_key"]
+app.config.update(SECRET_KEY=STUDENT_WEB_CONFIG["secret_key"], SESSION_COOKIE_NAME="circuit_entry")
 socketio = SocketIO(app, cors_allowed_origins="*", transports=['websocket', 'polling'])
 
 # 进程级运行变量仅保留给旧版单机调试接口使用，不作为多用户学生状态来源。
@@ -285,7 +285,10 @@ def index():
 
 def exam_identity() -> tuple:
     try:
-        return exam_ticket.loads(request.args.get('ticket', ''))
+        exam_id, student_id, name = exam_ticket.loads(request.args.get('ticket', ''))
+        if (session.get('student') or {}).get('id') != student_id:
+            raise ExamEntryError("请使用本人学生账号登录并选择考试", 403)
+        return exam_id, student_id, name
     except BadSignature:
         raise ExamEntryError("请从考试入口登录后进入", 403) from None
 
@@ -294,7 +297,7 @@ def exam_identity() -> tuple:
 def exam_page():
     try:
         exam_id, student_id, student_name = exam_identity()
-        exam = require_open_exam(exam_id)
+        exam = require_open_exam(exam_id, student_id)
         score = exam_result(exam_id, student_id, student_name)
     except ExamEntryError as error:
         abort(error.status, description=str(error))
@@ -305,21 +308,22 @@ def exam_page():
 def check_exam_entry():
     try:
         exam_id, student_id, student_name = exam_identity()
-        require_open_exam(exam_id)
+        rule_ticket = exam_rule_ticket(exam_id, student_id)
         score = exam_result(exam_id, student_id, student_name)
     except ExamEntryError as error:
         return jsonify(success=False, message=str(error)), error.status
-    return jsonify(success=True, submitted_score=score), 200, {'Cache-Control': 'no-store'}
+    return jsonify(success=True, submitted_score=score, rule_ticket=rule_ticket), 200, {'Cache-Control': 'no-store'}
 
 
-@app.post('/api/exam/result')
+@app.route('/api/exam/result', methods=['GET', 'POST'])
 def submit_exam_result():
     try:
         exam_id, student_id, student_name = exam_identity()
+        if request.method == 'GET':
+            score = exam_result(exam_id, student_id, student_name, check_open=True)
+            return jsonify(success=True, score=score), 200, {'Cache-Control': 'no-store'}
         body = request.get_json(silent=True)
-        if not isinstance(body, dict) or not isinstance(body.get('receipt'), str):
-            raise ExamEntryError("缺少网关的最终检查结果", 400)
-        score = exam_result(exam_id, student_id, student_name, submission=body)
+        score = exam_result(exam_id, student_id, student_name, submission=body if isinstance(body, dict) else {})
     except ExamEntryError as error:
         return jsonify(success=False, message=str(error)), error.status
     return jsonify(success=True, score=score), 200, {'Cache-Control': 'no-store'}

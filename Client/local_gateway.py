@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 import requests
-from itsdangerous import URLSafeSerializer
+from itsdangerous import BadData, URLSafeSerializer, URLSafeTimedSerializer
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from requests.adapters import HTTPAdapter, Retry
@@ -833,6 +833,48 @@ def recognize_face_not_supported():
     ), 410
 
 
+def exam_score_key():
+    key = config_value("exam_score_key", "", "EXAM_SCORE_KEY")
+    if not key:
+        key_file = Path(__file__).with_name("exam-score.key")
+        if key_file.is_file():
+            key = key_file.read_text(encoding="utf-8").strip()
+    return key
+
+
+# Keep the practice rule on disk and restore it when an exam attempt ends.
+practice_rule = None
+
+
+def activate_exam_rule(payload):
+    global practice_rule
+    key = exam_score_key()
+    if not key:
+        raise ValueError("本机网关尚未配置考试成绩签名密钥")
+    try:
+        bundle = URLSafeTimedSerializer(key, salt="wiring-exam-rule-v1").loads(
+            payload.get("rule_ticket") or "", max_age=180)
+    except BadData:
+        raise ValueError("考试规则凭据无效或已过期，请重新开始检测") from None
+    if bundle["exam"] != str(payload.get("test_id")) or bundle["student"] != str(payload.get("student_no")):
+        raise ValueError("考试规则与本次检测身份不符")
+    path = LOCAL_RULE_PATH.parent / ".exam" / "active.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(bundle["rules"], ensure_ascii=False), encoding="utf-8")
+    practice_rule = (Global_Config.test_rule, get_rule_filename())
+    payload["rule_file"] = payload["rule_filename"] = bundle["filename"]
+    update_active_rule_path(path, bundle["filename"])
+
+
+def restore_practice_rule():
+    global practice_rule
+    if practice_rule:
+        update_active_rule_path(*practice_rule)
+        runtime_context["rule_file"] = practice_rule[1]
+        practice_rule = None
+
+
+@app.post("/api/exam/start")
 @app.route("/api/yolo/start", methods=["POST"])
 @serialized_lifecycle
 def start_yolo():
@@ -860,6 +902,12 @@ def start_yolo():
                 "context": compact_dict(runtime_context.copy()),
             }
         )
+
+    if request.path == "/api/exam/start":
+        try:
+            activate_exam_rule(payload)
+        except (ValueError, OSError) as exc:
+            return jsonify(success=False, message=str(exc)), 400
 
     update_runtime_context(payload)
     stm_started = False
@@ -954,6 +1002,10 @@ def start_yolo():
             }
         ), 500
 
+    finally:
+        if not active_recording_id:
+            restore_practice_rule()
+
 
 @app.route("/api/yolo/stop", methods=["POST"])
 @serialized_lifecycle
@@ -1036,6 +1088,7 @@ def stop_yolo():
         if payload.get("submit_exam_result"):
             report_payload = build_exam_report_payload(payload.get("exam_result") or {})
             response["exam_report"] = post_to_server("/student/api/exam_result", report_payload)
+        restore_practice_rule()
         return jsonify(response)
     except Exception as exc:
         return jsonify({"success": False, "message": f"停止失败: {exc}", "running": is_detector_running()}), 500
@@ -1110,7 +1163,10 @@ def context():
 
 
 @app.route("/api/rules/pull", methods=["POST"])
+@serialized_lifecycle
 def pull_current_rule():
+    if active_recording_id or is_detector_running():
+        return jsonify(success=False, message="请先停止当前检测再切换规则"), 409
     payload = request.get_json(silent=True) or {}
     update_runtime_context(payload)
 
@@ -1308,11 +1364,7 @@ def read_recording(recording_id: str):
 
 @app.post("/api/recordings/<recording_id>/exam-receipt")
 def exam_receipt(recording_id):
-    key = config_value("exam_score_key", "", "EXAM_SCORE_KEY")
-    if not key:
-        key_file = Path(__file__).with_name("exam-score.key")
-        if key_file.is_file():
-            key = key_file.read_text(encoding="utf-8").strip()
+    key = exam_score_key()
     if not key:
         return jsonify(success=False, message="本机网关尚未配置考试成绩签名密钥"), 503
     try:

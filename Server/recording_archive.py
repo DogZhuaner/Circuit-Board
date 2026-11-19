@@ -15,7 +15,7 @@ def archive_path(digest):
     return root / digest[:2] / (digest + ".json")
 
 
-def store_archive(raw, proof):
+def store_archive(raw, proof, *, expected_rules=None):
     if not isinstance(raw, str):
         raise ExamEntryError("缺少接线回顾文件", 400)
     content = raw.encode("utf-8")
@@ -31,6 +31,8 @@ def store_archive(raw, proof):
                  and str(record["metadata"]["test_id"]) == str(proof["exam_id"])
                  and record["latest_state"]["score"] == proof["score"]
                  and len(record["events"]) == record["last_seq"])
+        if expected_rules is not None and record["metadata"].get("rule_snapshot") != expected_rules:
+            raise ExamEntryError("检测使用的接线规则与本场考试不一致，请按指定规则重新检测", 409)
         if not valid:
             raise ValueError
     except (ValueError, TypeError, KeyError):

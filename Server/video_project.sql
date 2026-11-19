@@ -371,6 +371,48 @@ UNLOCK TABLES;
 --
 -- Dumping routines for database 'video_project'
 --
+ALTER TABLE exam_test
+    ADD COLUMN issuer_tno INT UNSIGNED NULL,
+    ADD COLUMN exam_content TEXT NULL,
+    ADD COLUMN rule_filename VARCHAR(255) NULL,
+    ADD COLUMN rule_snapshot JSON NULL,
+    ADD CONSTRAINT fk_exam_issuer FOREIGN KEY (issuer_tno) REFERENCES teacher(tno)
+        ON UPDATE CASCADE ON DELETE RESTRICT;
+
+UPDATE exam_test e JOIN teacher t ON BINARY e.teacher_id = CAST(t.tno AS CHAR)
+SET e.issuer_tno = t.tno, e.update_time = e.update_time;
+
+CREATE TABLE teaching_class (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    teacher_tno INT UNSIGNED NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    UNIQUE KEY uq_class_name (teacher_tno, name),
+    CONSTRAINT fk_class_teacher FOREIGN KEY (teacher_tno) REFERENCES teacher(tno)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE class_student (
+    class_id INT UNSIGNED NOT NULL,
+    student_no INT UNSIGNED NOT NULL,
+    PRIMARY KEY (class_id, student_no),
+    CONSTRAINT fk_membership_class FOREIGN KEY (class_id) REFERENCES teaching_class(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_membership_student FOREIGN KEY (student_no) REFERENCES student(sno)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Existing exams were published to all students. New exams require class membership.
+ALTER TABLE exam_test ADD COLUMN class_restricted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE exam_test ALTER COLUMN class_restricted SET DEFAULT TRUE;
+
+CREATE TABLE exam_class (
+    exam_id INT NOT NULL,
+    class_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (exam_id, class_id),
+    CONSTRAINT fk_audience_exam FOREIGN KEY (exam_id) REFERENCES exam_test(id) ON DELETE CASCADE,
+    CONSTRAINT fk_audience_class FOREIGN KEY (class_id) REFERENCES teaching_class(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;

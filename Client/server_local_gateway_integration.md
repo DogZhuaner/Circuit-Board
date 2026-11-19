@@ -125,7 +125,7 @@ GET /api/auth/user-info?user_no=...
 | POST | `/teacher/api/student` | JSON: `sno`, `name`, `class_name` | `success`, `message` |
 | PUT | `/teacher/api/student/<id>` | JSON: `sno`, `name`, `class_name` | `success`, `message` |
 | DELETE | `/teacher/api/student/<id>` | path id | `success`, `message` |
-| POST | `/teacher/api/create_exam` | JSON: `test_name`, `test_type`, `duration_minutes`, `publish_time`, `deadline_time` | `success`, `exam_id`, `message` |
+| POST | `/teacher/api/create_exam` | JSON: `test_name`, `exam_content`, `rule_filename`, `class_ids` (int[]), `publish_time`, `deadline_time` | `success`, `exam_id` |
 | GET | `/teacher/api/get_exams` | 当前教师工号 | `success`, `exams:[{id,test_name,test_type,duration_minutes,publish_time,deadline_time,create_time,update_time,teacher_info}]`, `total`, `teacher_info` |
 | GET | `/teacher/api/student_score/<sno>` | path `sno` | `sno`, `score`，内存演示数据 |
 | GET | `/teacher/api/get_score_summary` | 无 | `success`, `summary:{average,highest,lowest,total}`，演示数据 |

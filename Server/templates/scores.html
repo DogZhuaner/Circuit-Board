@@ -56,11 +56,11 @@
 </head>
 <body>
   <main class="login-container">
-    <a class="back-link" href="{{ url_for('student_entry') }}">← 返回选择页</a>
+    <a class="back-link" href="{{ back_url }}">← {{ back_label }}</a>
     <h1 class="login-title my-4">成绩数据可视化</h1>
     {% if error %}
     <p role="alert" class="alert alert-warning">{{ error }}</p>
-    <a href="{{ url_for('student_scores') }}">重新加载</a>
+    <a href="{{ request.path }}">重新加载</a>
     {% else %}
     <div id="scores" v-cloak>
     {% raw %}

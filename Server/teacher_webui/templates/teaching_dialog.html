@@ -1,0 +1,100 @@
+{% raw %}
+<script type="text/x-template" id="teaching-dialog-template">
+<div class="modal teaching-backdrop" @keydown.esc="close">
+  <div class="modal-content roster teaching-dialog" role="dialog" aria-modal="true" aria-labelledby="teaching-title" tabindex="-1" ref="dialog" @keydown.tab="trapFocus">
+    <header class="roster-banner">
+      <div class="roster-emblem"><i :class="exam ? 'bi bi-calendar-event' : 'bi bi-people'"></i></div>
+      <div><h2 id="teaching-title">{{ initialExam ? '编辑考试' : exam ? '新增考试' : '管理班级' }}</h2>
+        <span>{{ initialExam ? initialExam.test_name : exam ? '设置考试内容、开放时间与评分规则' : '维护班级名称和学生名单' }}</span>
+      </div>
+      <button type="button" class="roster-close" aria-label="关闭" @click="close" :disabled="busy"><i class="bi bi-x-lg"></i></button>
+    </header>
+    <div v-if="loginRequired" class="teach-message">请先登录教师账号，以便将考试和班级关联到你的工号。 <a href="/">教师登录</a></div>
+    <template v-else>
+      <p v-if="error" class="teach-message teach-error" role="alert">{{ error }}</p>
+      <p v-if="notice" class="teach-message" role="status">{{ notice }}</p>
+      <p v-if="initialExam && locked" class="teach-message" role="status">考试已开始，编辑已关闭。</p>
+      <form v-if="exam && !published" class="teach-form" @submit.prevent="publish">
+        <section class="teach-block">
+          <h3>考试安排</h3>
+          <label>考试名称<input :disabled="busy || locked" v-model.trim="form.test_name" maxlength="100" required placeholder="例如：电机正反转接线考核"></label>
+          <div class="teach-times">
+            <label>开始时间<input v-model="form.publish_time" required type="datetime-local" :disabled="busy || locked"></label>
+            <label>截止时间<input v-model="form.deadline_time" required type="datetime-local" :disabled="busy || locked" :min="form.publish_time"></label>
+          </div>
+          <fieldset class="exam-audience" :disabled="busy || locked">
+            <legend>参考班级 <small>可多选</small></legend>
+            <small v-if="initialExam && !initialExam.class_restricted">原参考范围为全部学生，勾选班级后将改为仅限所选班级。</small>
+            <div v-if="groups.length" class="exam-class-list">
+              <label v-for="group in groups" :key="group.id">
+                <input type="checkbox" v-model="form.class_ids" :value="group.id">
+                <span>{{ group.name }}</span><small>{{ group.count }} 人</small>
+              </label>
+            </div>
+            <small v-else>{{ loading ? '正在读取班级…' : '请先在「管理班级」中新建班级，再发布考试。' }}</small>
+          </fieldset>
+        </section>
+        <section class="teach-block">
+          <h3>内容与评分</h3>
+          <label>考试内容<textarea v-model.trim="form.exam_content" rows="3" maxlength="10000" :disabled="busy || locked" :required="!initialExam || !!initialExam.exam_content" placeholder="填写接线任务和操作要求"></textarea></label>
+          <label>接线规则文件<select v-model="form.rule_filename" :disabled="busy || locked" :required="!initialExam">
+            <option v-if="initialExam" value="">{{ initialExam.rule_filename ? '沿用已发布副本 · ' + initialExam.rule_filename : '沿用原考试规则' }}</option>
+            <option v-else value="" disabled>{{ loading ? '正在读取规则文件…' : '请选择规则文件' }}</option>
+            <option v-for="file in files" :key="file.filename" :value="file.filename">{{ file.filename }}</option>
+          </select></label>
+          <small>{{ initialExam ? '选择文件后，将使用该文件当前的内容重新保存评分规则。' : files.length || loading ? '发布时保存规则副本，供本场考试评分使用。' : '暂无可用规则，请先在「制定接线规则」中保存文件。' }}</small>
+        </section>
+        <div class="teach-footer"><button type="button" class="roster-link" @click="close" :disabled="busy">取消</button>
+          <button class="roster-primary" :disabled="!canSaveExam">{{ initialExam ? (busy ? '正在保存…' : '保存修改') : (busy ? '正在发布…' : '发布考试') }}</button>
+        </div>
+      </form>
+      <section v-else-if="exam" class="teach-block teach-summary">
+        <h3>{{ form.test_name }}</h3>
+        <p>{{ form.publish_time.replace('T',' ') }} 至 {{ form.deadline_time.replace('T',' ') }}</p>
+        <p>参考班级 · {{ groups.filter(group => form.class_ids.includes(group.id)).map(group => group.name).join('、') }}</p>
+        <p>接线规则 · {{ form.rule_filename }}</p>
+        <button class="roster-primary" @click="close">完成</button>
+      </section>
+      <div v-else class="teach-columns">
+        <section class="teach-block">
+          <h3>我的班级 <small>{{ groups.length }}</small></h3>
+          <form class="teach-inline" @submit.prevent="createGroup">
+            <label class="visually-hidden" for="new-class-name">新班级名称</label>
+            <input id="new-class-name" v-model.trim="newName" maxlength="100" required placeholder="新班级名称">
+            <button class="roster-primary" :disabled="busy || loading">新建</button>
+          </form>
+          <div class="teach-groups">
+            <button v-for="group in groups" :key="group.id" class="teach-group" :aria-pressed="selected === group.id"
+                    :disabled="busy" @click="choose(group.id)"><span>{{ group.name }}</span><small>{{ group.count }} 人</small></button>
+          </div>
+          <p v-if="!groups.length" class="teach-empty">{{ loading ? '正在加载班级…' : '尚未创建班级' }}</p>
+        </section>
+        <section class="teach-block">
+          <h3>班级成员</h3>
+          <template v-if="selected && ready">
+            <form class="teach-inline" @submit.prevent="renameGroup">
+              <label class="visually-hidden" for="edit-class-name">当前班级名称</label>
+              <input id="edit-class-name" v-model.trim="editName" maxlength="100" required>
+              <button class="roster-link" :disabled="busy || editName === current.name">保存名称</button>
+            </form>
+            <div class="teach-tabs" aria-label="学生名单范围">
+              <button type="button" :aria-pressed="members" @click="members=true">班内学生 · {{ current.count }}</button>
+              <button type="button" :aria-pressed="!members" @click="members=false">可添加学生</button>
+            </div>
+            <input type="search" v-model.trim="search" aria-label="搜索姓名或学号" placeholder="搜索姓名或学号">
+            <ul class="teach-students">
+              <li v-for="student in filtered" :key="student.sno">
+                <span>{{ student.name }} <small>{{ student.sno }}</small></span>
+                <button type="button" class="roster-link" :disabled="busy" @click="setMember(student)">{{ members ? '移出班级' : '加入班级' }}</button>
+              </li>
+            </ul>
+            <p v-if="!filtered.length" class="teach-empty">{{ search ? '没有匹配的学生' : members ? '班内暂无学生，可在「可添加学生」中加入。' : '没有可添加的学生' }}</p>
+          </template>
+          <p v-else class="teach-empty">{{ loading ? '正在读取名单…' : '选择或创建班级后，在此管理成员。' }}</p>
+        </section>
+      </div>
+    </template>
+  </div>
+</div>
+</script>
+{% endraw %}

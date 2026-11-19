@@ -3,6 +3,7 @@ import multiprocessing
 from collections import Counter
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 from urllib.parse import urlencode
 from urllib import request as urllib_request, error as urllib_error
 
@@ -219,6 +220,8 @@ def find_user_identity(user_no):
 def login_destination(user: dict) -> str:
     session.clear()
     if user["role"] == "teacher":
+        session["teacher_id"] = user["id"]
+        session["teacher_name"] = user["name"]
         query = urlencode({"teacher_id": user["id"], "teacher_name": user["name"]})
         return f"{get_teacher_web_base(request.host_url)}/?{query}"
 
@@ -235,7 +238,7 @@ def exam_login_error(error):
 def available_exams():
     if "student" not in session:
         return jsonify(success=False, message="请先登录学生账号"), 401
-    return jsonify(exams=open_exams()), 200, {"Cache-Control": "no-store"}
+    return jsonify(exams=open_exams(session["student"]["id"])), 200, {"Cache-Control": "no-store"}
 
 
 @app.route("/", methods=["GET"])
@@ -259,7 +262,7 @@ def student_entry():
     status = 200
     if mode == "exam":
         try:
-            exam = require_open_exam(request.args.get("exam_id"))
+            exam = require_open_exam(request.args.get("exam_id"), student["id"])
         except ExamEntryError as error:
             notice, status = str(error), error.status
         else:
@@ -269,12 +272,33 @@ def student_entry():
     return render_template("entry.html", student=student, notice=notice), status, {"Cache-Control": "no-store"}
 
 
+def score_view_student(sno):
+    if sno is None:
+        return session.get("student")
+    if not session.get("teacher_id"):
+        abort(403)
+    connector = MySQLConnector()
+    try:
+        students = connector.query("SELECT sno,name FROM student WHERE sno=%s", (sno,))
+    except RuntimeError:
+        abort(503)
+    finally:
+        connector.close()
+    if not students:
+        abort(404)
+    number, name = students[0]
+    return {"id": str(number), "name": name}
+
+
+@app.get("/staff/students/<int:sno>/scores")
 @app.get("/scores")
-def student_scores():
-    student = session.get("student")
+def student_scores(sno=None):
+    student = score_view_student(sno)
     if not student:
         return redirect(url_for("login_page"))
-
+    back_url = (get_teacher_web_base(request.host_url).rstrip("/") + "/?panel=students"
+                if sno is not None else url_for("student_entry"))
+    navigation = dict(back_url=back_url, back_label="返回学生名册" if sno is not None else "返回选择页")
     connector = MySQLConnector()
     try:
         rows = connector.query(
@@ -285,7 +309,7 @@ def student_scores():
         )
     except RuntimeError:
         app.logger.exception("读取学生成绩失败")
-        return render_template("scores.html", error="暂时无法读取成绩，请稍后重试。"), 503, {"Cache-Control": "no-store"}
+        return render_template("scores.html", error="暂时无法读取成绩，请稍后重试。", **navigation), 503, {"Cache-Control": "no-store"}
     finally:
         connector.close()
 
@@ -293,20 +317,21 @@ def student_scores():
     counts = Counter()
     for row_id, exam_id, name, score, knowledge, review_id in rows:
         scores.append({"id": row_id, "test_id": exam_id, "test_name": name, "score": float(score),
-                       "review_url": url_for("score_review", result_id=row_id) if review_id else None})
+                       "review_url": url_for("score_review", result_id=row_id, sno=sno) if review_id else None})
         points = (knowledge or "").replace("，", ",").split(",")
         counts.update(point.strip() for point in points if point.strip())
     return render_template(
-        "scores.html", student=student, scores=scores,
+        "scores.html", student=student, scores=scores, **navigation,
         knowledge=[{"name": name, "count": count} for name, count in counts.most_common()],
         exam_count=len({row["test_id"] for row in scores}),
         average=round(sum(row["score"] for row in scores) / len(scores), 2) if scores else "—",
     ), 200, {"Cache-Control": "no-store"}
 
 
+@app.get("/staff/students/<int:sno>/scores/<int:result_id>/review")
 @app.get("/scores/<int:result_id>/review")
-def score_review(result_id):
-    student = session.get("student")
+def score_review(result_id, sno=None):
+    student = score_view_student(sno)
     if not student:
         return redirect(url_for("login_page"))
     db = MySQLConnector()
@@ -320,13 +345,37 @@ def score_review(result_id):
         db.close()
     if not rows:
         abort(404)
-    name, digest = rows[0]
+    return render_wiring_review(*rows[0], scores_url=url_for("student_scores", sno=sno))
+
+
+@app.get("/staff/exams/<int:exam_id>/scores/<int:result_id>/review")
+def exam_score_review(exam_id: int, result_id: int):
+    if not session.get("teacher_id"):
+        abort(403)
+    db = MySQLConnector()
+    try:
+        rows = db.query(
+            "SELECT e.test_name,w.sha256 FROM exam_test e "
+            "JOIN exam_result r ON r.test_id=%s "
+            "JOIN exam_recording w ON w.result_id=r.id "
+            "WHERE e.id=%s AND e.issuer_tno=%s AND e.deadline_time<=NOW() "
+            "AND r.id=%s AND r.test_score IS NOT NULL", (str(exam_id), exam_id, session["teacher_id"], result_id))
+    except RuntimeError:
+        abort(503)
+    finally:
+        db.close()
+    if not rows:
+        abort(404)
+    return render_wiring_review(*rows[0])
+
+
+def render_wiring_review(name: str, digest: str, scores_url: Optional[str] = None):
     try:
         record = json.loads(archive_path(digest).read_bytes())
     except (OSError, ValueError):
-        app.logger.exception("读取成绩 %s 的接线归档失败", result_id)
+        app.logger.exception("读取接线归档 %s 失败", digest)
         return "暂时无法读取接线记录，请稍后重试。", 503, {"Cache-Control": "no-store"}
-    return render_template("review.html", name=name, record=record), 200, {"Cache-Control": "no-store"}
+    return render_template("review.html", name=name, record=record, scores_url=scores_url), 200, {"Cache-Control": "no-store"}
 
 
 @app.route("/health", methods=["GET"])

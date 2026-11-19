@@ -13,12 +13,29 @@
     <script src="/static/js/socket.io.min.js"></script>
     <!-- Vue.js 3 -->
     <script src="/static/js/vue.global.js"></script>
-    <!-- AOS Animation -->
-    <link href="/static/css/aos.css" rel="stylesheet">
-    <script src="/static/js/aos.js"></script>
 
     <style>
         [v-cloak] { display: none; }
+
+
+        /* Start every mounted panel together, including panels below the fold. */
+        @media (prefers-reduced-motion: no-preference) {
+            [data-entry] {
+                animation: panel-enter 480ms ease-out;
+            }
+
+            [data-entry="right"] { --entry-x: -16px; }
+            [data-entry="left"] { --entry-x: 16px; }
+            [data-entry="up"] { --entry-y: 12px; }
+        }
+
+        @keyframes panel-enter {
+            from {
+                opacity: 0;
+                translate: var(--entry-x, 0) var(--entry-y, 0);
+            }
+            to { opacity: 1; translate: 0 0; }
+        }
 
         .exam-actions .btn-custom {
             padding: 10px 20px;
@@ -700,7 +717,7 @@
 </head>
 <body>
     {% macro control_status() %}
-    <div{% if not selected_exam %} class="mt-4"{% endif %} data-aos="fade-up" data-aos-delay="{{ 500 if selected_exam else 1000 }}">
+    <div{% if not selected_exam %} class="mt-4"{% endif %}>
         <div class="alert alert-info" role="status">
             <i class="bi bi-info-circle me-2"></i>
             <strong>状态：</strong>{% raw %}{{ statusMessage }}{% endraw %}
@@ -708,7 +725,7 @@
     </div>
     {% endmacro %}
     {% macro contact_panel() %}{% raw %}
-    <div class="mb-4" data-aos="fade-up" data-aos-delay="700">
+    <div class="mb-4">
         <h6 class="text-muted mb-2">
             <i class="bi bi-plug me-2"></i>
             实时接线触点
@@ -727,18 +744,18 @@
     {% endraw %}{% endmacro %}
     {% raw %}
     <div id="app" class="container-fluid py-4" v-cloak>
-        <div class="main-container" data-aos="fade-up" data-aos-duration="1000">
+        <div class="main-container">
             <!-- 头部 -->
             <div class="header-gradient p-4">
-                <div class="row align-items-center">
+                <div class="row align-items-center" data-entry="up">
                     <div class="col-md-8">
-                        <h1 class="mb-0" data-aos="fade-right" data-aos-delay="200">
+                        <h1 class="mb-0">
                             <i class="bi bi-lightning-charge me-3"></i>
                             {{ selectedExam ? '考试 · ' + selectedExam.name : '练习 · 电路配盘接线系统' }}
                         </h1>
                     </div>
                     <div class="col-md-4 text-end">
-                        <div class="d-flex align-items-center justify-content-end" data-aos="fade-left" data-aos-delay="400">
+                        <div class="d-flex align-items-center justify-content-end">
                             <span class="status-indicator" :class="connectionStatus"></span>
                             <span class="text-white fw-semibold">{{ connectionText }}</span>
                         </div>
@@ -747,7 +764,7 @@
             </div>
 
             <!-- 学生信息 -->
-            <div class="student-info-card" data-aos="fade-up" data-aos-delay="300">
+            <div class="student-info-card" data-entry="up">
                 <div class="row">
                     <div class="col-md-6">
                         <h5 class="text-primary mb-2">
@@ -769,7 +786,7 @@
                 <div class="row" :class="{ 'practice-layout': !selectedExam }">
                     <!-- 操作控制 -->
                     <div class="mb-4" :class="selectedExam ? 'col-12' : 'col-lg-4 mb-lg-0'">
-                        <div class="card card-custom h-100" data-aos="fade-right" data-aos-delay="400">
+                        <div class="card card-custom h-100" data-entry="right">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0">
                                     <i class="bi bi-gear me-2"></i>
@@ -777,7 +794,12 @@
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <div v-if="!selectedExam" class="rule-select-panel" data-aos="fade-up" data-aos-delay="520">
+                                <section v-if="selectedExam && selectedExam.content" class="mb-4 p-3 bg-light rounded">
+                                    <h5 class="text-primary">考试内容</h5>
+                                    <p style="white-space:pre-wrap;overflow-wrap:anywhere" v-text="selectedExam.content"></p>
+                                    <small class="text-secondary">本场规则 · {{ selectedExam.rule_filename }}</small>
+                                </section>
+                                <div v-if="!selectedExam" class="rule-select-panel">
                                     <div class="rule-select-label">
                                         <span><i class="bi bi-file-earmark-check me-2"></i>考核规则</span>
                                         <small>{{ ruleFiles.length }} 个文件</small>
@@ -799,7 +821,7 @@
                                 </div>
 
                                 <!-- 练习实时得分 -->
-                                <div v-if="!selectedExam" class="text-center mb-4" data-aos="zoom-in" data-aos-delay="600">
+                                <div v-if="!selectedExam" class="text-center mb-4">
                                     <div class="score-display" :class="scoreClass">
                                         <i class="bi bi-trophy me-2"></i>
                                         得分：{{ currentScore }}分
@@ -814,9 +836,8 @@
                                 <div class="d-grid gap-3" :class="{ 'exam-actions': selectedExam }">
                                     <button
                                         @click="startDetection"
-                                        :disabled="detectionRunning || loading || submittedScore !== null"
-                                        class="btn btn-custom btn-start"
-                                        data-aos="fade-up" data-aos-delay="700">
+                                        :disabled="detectionRunning || loading || examEnded || submittedScore !== null"
+                                        class="btn btn-custom btn-start">
                                         <i class="bi bi-play-circle me-2"></i>
                                         {{ detectionRunning ? '检测运行中...' : '开始接线操作' }}
                                         <span v-if="loading" class="loading-spinner ms-2"></span>
@@ -825,22 +846,20 @@
                                     <button
                                         @click="stopDetection"
                                         :disabled="!detectionRunning || loading"
-                                        class="btn btn-custom btn-stop"
-                                        data-aos="fade-up" data-aos-delay="800">
+                                        class="btn btn-custom btn-stop">
                                         <i class="bi bi-stop-circle me-2"></i>
                                         停止接线操作
                                     </button>
 
                                     <button v-if="selectedExam" type="button" class="btn btn-custom btn-primary"
-                                            @click="submitExam" :disabled="loading || !examRecordingId || submittedScore !== null">
+                                            @click="submitExam" :disabled="loading || !examRecordingId || examEnded || submittedScore !== null">
                                         <i class="bi bi-check2-square me-2"></i>检查并提交成绩
                                     </button>
 
                                     <button
                                         v-if="!selectedExam"
                                         @click="openAiChat"
-                                        class="btn btn-custom btn-ai"
-                                        data-aos="fade-up" data-aos-delay="900">
+                                        class="btn btn-custom btn-ai">
                                         <i class="bi bi-robot me-2"></i>
                                         AI大模型对话
                                     </button>
@@ -848,8 +867,7 @@
                                     <button
                                         v-if="!selectedExam"
                                         @click="openQuestionGeneration"
-                                        class="btn btn-custom btn-warning"
-                                        data-aos="fade-up" data-aos-delay="1100">
+                                        class="btn btn-custom btn-warning">
                                         <i class="bi bi-question-circle me-2"></i>
                                         知识点题目生成
                                     </button>
@@ -863,7 +881,7 @@
                     <!-- 实时接线情况和练习题目 -->
                     <div :class="selectedExam ? 'col-12' : 'col-lg-8 practice-panels'">
                         <!-- 实时接线情况 -->
-                        <div class="card card-custom" data-aos="fade-left" data-aos-delay="500">
+                        <div class="card card-custom" data-entry="left">
                             <div class="card-header bg-success text-white">
                                 <h5 class="mb-0">
                                     <i class="bi bi-table me-2"></i>
@@ -889,7 +907,8 @@
                                     </div>
                                 </div>
 
-                                <div v-if="selectedExam && submittedScore !== null" class="text-center mb-4" role="status">
+                                <div v-if="selectedExam && examEnded" class="text-center mb-4" role="alert"><strong>考试已结束</strong></div>
+                                <div v-else-if="selectedExam && submittedScore !== null" class="text-center mb-4" role="status">
                                     <strong>已提交成绩：{{ submittedScore }} 分</strong>
                                 </div>
 
@@ -909,7 +928,7 @@
                                         </thead>
                                         <tbody>
                                             <!-- 显示接线结果 -->
-                                            <tr v-for="(result, index) in wiringResults" :key="result.id" :data-aos="selectedExam ? 'fade-up' : null">
+                                            <tr v-for="(result, index) in wiringResults" :key="result.id">
                                                 <td>{{ index + 1 }}</td>
                                                 <td>{{ result.end1 }}</td>
                                                 <td>{{ result.end2 }}</td>
@@ -943,7 +962,7 @@
                         </div>
                         
                         <!-- 自动生成题目信息框 -->
-                        <div v-if="!selectedExam" class="card card-custom" data-aos="fade-left" data-aos-delay="600">
+                        <div v-if="!selectedExam" class="card card-custom" data-entry="left">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0">
                                     <i class="bi bi-question-circle me-2"></i>
@@ -1228,13 +1247,6 @@
     <!-- Bootstrap 5 JS -->
     <script src="/static/js/bootstrap.bundle.min.js"></script>
     <script>
-        // 初始化AOS动画
-        AOS.init({
-            duration: 800,
-            easing: 'ease-in-out',
-            once: true
-        });
-
         const { createApp } = Vue;
         const DEFAULT_LOCAL_CLIENT_BASE = {{ local_client_base|tojson }};
         const OLLAMA_DEFAULTS = {{ frontend_ollama_defaults|tojson }};
@@ -1249,6 +1261,7 @@
                     ready: false,
                     selectedExam: {{ selected_exam|tojson }},
                     submittedScore: {{ submitted_score|tojson }},
+                    examEnded: false,
                     examRecordingId: '',
                     
                     // 连接状态
@@ -1718,11 +1731,13 @@
                 async startDetection() {
                     this.loading = true;
                     try {
+                        let ruleTicket = null;
                         if (this.selectedExam) {
                             try {
                                 const response = await fetch('api/exam/entry' + window.location.search, { cache: 'no-store' });
                                 const result = await response.json();
                                 if (!response.ok || !result.success) throw new Error(result.message);
+                                ruleTicket = result.rule_ticket;
                                 if (result.submitted_score != null) {
                                     this.showSubmittedScore(result.submitted_score);
                                     return;
@@ -1736,7 +1751,8 @@
                         const newSessionId = (window.crypto && crypto.randomUUID)
                             ? crypto.randomUUID()
                             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-                        const response = await fetch(`${LOCAL_CLIENT_BASE}/api/yolo/start`, {
+                        const startPath = ruleTicket ? "/api/exam/start" : "/api/yolo/start";
+                        const response = await fetch(`${LOCAL_CLIENT_BASE}${startPath}`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -1747,10 +1763,15 @@
                                 session_id: newSessionId,
                                 test_id: this.selectedExam ? this.selectedExam.id : '',
                                 test_name: this.selectedExam ? this.selectedExam.name : '',
+                                rule_ticket: ruleTicket,
                                 rule_file: this.currentRuleFile || 'current_rule.json'
                             })
                         });
 
+                        if (ruleTicket && response.status === 404) {
+                            this.statusMessage = "请更新本机网关，以使用教师指定的考试规则";
+                            return;
+                        }
                         const data = await response.json();
                         if (data.success) {
                             this.examSessionId = newSessionId;
@@ -1833,10 +1854,23 @@
                 },
 
                 async submitExam() {
-                    if (this.loading || !this.examRecordingId || this.submittedScore !== null) return;
+                    if (this.examEnded || this.loading || !this.examRecordingId || this.submittedScore !== null) return;
                     if (!window.confirm('提交后不可更改成绩，是否确认？')) return;
                     this.loading = true;
                     try {
+                        const availability = await fetch('api/exam/result' + window.location.search, { cache: 'no-store' });
+                        if (availability.status === 410) {
+                            this.examEnded = true;
+                            if (this.detectionRunning) await this.finishDetection();
+                            this.statusMessage = '考试已结束';
+                            return;
+                        }
+                        const current = await availability.json();
+                        if (!availability.ok) throw new Error(current.message);
+                        if (current.score !== null) {
+                            this.showSubmittedScore(current.score);
+                            return;
+                        }
                         if (this.detectionRunning) await this.finishDetection();
                         const path = '/api/recordings/' + encodeURIComponent(this.examRecordingId) + '/exam-receipt?archive=1';
                         const bundleResponse = await fetch(LOCAL_CLIENT_BASE + path, { method: 'POST' });
@@ -1850,6 +1884,11 @@
                             body: JSON.stringify({ receipt: bundle.receipt, archive: bundle.archive })
                         });
                         const result = await response.json();
+                        if (response.status === 410) {
+                            this.examEnded = true;
+                            this.statusMessage = '考试已结束';
+                            return;
+                        }
                         if (!response.ok || !result.success) throw new Error(result.message || '提交失败，请重试');
                         this.showSubmittedScore(result.score);
                     } catch (error) {

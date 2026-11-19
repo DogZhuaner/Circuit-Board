@@ -57,3 +57,7 @@ FROM exam_result AS r
 LEFT JOIN exam_recording AS w ON w.result_id = r.id
 WHERE r.student_no = %s AND r.test_id = %s;
 ```
+
+已有数据库请执行一次 `migrations/002_teaching.sql` 以启用教师发布考试和班级管理。新导入的数据库已包含该结构。考试按数据库本地时间开放，发布时保存规则文件副本；同步更新学生机的 `Client/local_gateway.py`，以便按考试规则检测和计分。
+
+已有库在上述迁移后执行一次 `migrations/003_exam_classes.sql`。新考试须指定至少一个教师名下的班级，学生按当前班级成员关系及开放时间选考。迁移前发布的考试沿用原开放范围。

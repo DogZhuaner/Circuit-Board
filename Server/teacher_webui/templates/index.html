@@ -8,6 +8,7 @@
     <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
     <script src="/static/js/socket.io.min.js"></script>
     <script src="/static/js/vue.global.js"></script>
+    <script src="{{ url_for('static', filename='js/rule-wire-layout.js') }}"></script>
     <script src="/static/js/chart.min.js"></script>
     <style>
         :root {
@@ -187,13 +188,13 @@
             background-color: var(--primary-color);
             border-radius: 10px;
         }
-        .btn-primary {
+        .btn-class-manager {
             background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(79, 70, 229, 0.05));
         }
         .btn-success {
             background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
         }
-        .btn-warning {
+        .btn-rule-builder {
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
         }
         .btn-danger {
@@ -206,7 +207,7 @@
         .btn-light-cyan {
             background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(6, 182, 212, 0.05));
         }
-        .btn-rule-builder {
+        .btn-manage-students {
             background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(79, 70, 229, 0.05));
         }
         .btn-rule-manager {
@@ -222,13 +223,13 @@
             opacity: 0;
             transition: opacity 0.3s ease;
         }
-        .btn-primary::before {
+        .btn-class-manager::before {
             background: linear-gradient(90deg, var(--primary-light), var(--primary-color));
         }
         .btn-success::before {
             background: linear-gradient(90deg, var(--success-light), var(--success-color));
         }
-        .btn-warning::before {
+        .btn-rule-builder::before {
             background: linear-gradient(90deg, var(--warning-light), var(--warning-color));
         }
         .btn-danger::before {
@@ -244,7 +245,7 @@
         .btn-light-cyan::before {
             background: linear-gradient(90deg, var(--light-cyan-light), var(--light-cyan));
         }
-        .btn-rule-builder::before {
+        .btn-manage-students::before {
             background: linear-gradient(90deg, #2dd4bf, var(--primary-color));
         }
         .btn-rule-manager::before {
@@ -275,13 +276,13 @@
         .btn-card:hover .btn-icon {
             transform: scale(1.05) rotate(5deg);
         }
-        .btn-primary .btn-icon {
+        .btn-class-manager .btn-icon {
             background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
         }
         .btn-success .btn-icon {
             background: linear-gradient(135deg, var(--success-color), var(--success-dark));
         }
-        .btn-warning .btn-icon {
+        .btn-rule-builder .btn-icon {
             background: linear-gradient(135deg, var(--warning-color), var(--warning-dark));
         }
         .btn-danger .btn-icon {
@@ -297,7 +298,7 @@
         .btn-light-cyan .btn-icon {
             background: linear-gradient(135deg, var(--light-cyan), var(--light-cyan-dark));
         }
-        .btn-rule-builder .btn-icon {
+        .btn-manage-students .btn-icon {
             background: linear-gradient(135deg, #14b8a6, #0f766e);
         }
         .btn-rule-manager .btn-icon {
@@ -584,17 +585,22 @@
             </div>
         </div>
         <div class="btn-container">
-            <div class="btn-card btn-light-blue feature-hidden" @click="openCreateExamModal">
-                <div class="btn-icon"><i class="bi bi-plus-circle"></i></div>
-                <div class="btn-text">新增考试</div>
-                <div class="btn-subtext">创建新的考试任务</div>
-            </div>
+            <button class="btn-card btn-light-blue" ref="examManagerButton" type="button" @click="teachingMode='exams'">
+                <div class="btn-icon"><i class="bi bi-calendar-event"></i></div>
+                <div class="btn-text">管理考试</div>
+                <div class="btn-subtext">查看、发布和编辑考试安排</div>
+            </button>
+            <button type="button" class="btn-card btn-class-manager" @click="teachingMode='classes'">
+                <div class="btn-icon"><i class="bi bi-people"></i></div>
+                <div class="btn-text">管理班级</div>
+                <div class="btn-subtext">维护班级与学生名单</div>
+            </button>
             <div class="btn-card btn-success feature-hidden" @click="openViewScoresModal">
                 <div class="btn-icon"><i class="bi bi-bar-chart-line"></i></div>
                 <div class="btn-text">查看学生成绩</div>
                 <div class="btn-subtext">分析和导出考试结果</div>
             </div>
-            <div class="btn-card btn-warning" @click="openManageStudentsModal">
+            <div class="btn-card btn-manage-students" @click="openManageStudentsModal">
                 <div class="btn-icon"><i class="bi bi-people-fill"></i></div>
                 <div class="btn-text">管理学生</div>
                 <div class="btn-subtext">添加、编辑和删除学生信息</div>
@@ -604,11 +610,12 @@
                 <div class="btn-text" v-text="ruleServerStatus === 'stopped' ? '开启规则下载服务' : '停止规则下载服务'"></div>
                 <div class="btn-subtext">控制接线规则文件的分发</div>
             </div>
-            <div class="btn-card btn-rule-builder" @click="openRuleBuilderModal">
+            <button type="button" class="btn-card btn-rule-builder" ref="ruleBuilderCard" aria-haspopup="dialog"
+                    @click="$refs.ruleMethodDialog.showModal()">
                 <div class="btn-icon"><i class="bi bi-diagram-3"></i></div>
                 <div class="btn-text">制定接线规则</div>
                 <div class="btn-subtext">网页连线生成自定义规则文件</div>
-            </div>
+            </button>
             <div class="btn-card btn-rule-manager" @click="openRuleManagerModal">
                 <div class="btn-icon"><i class="bi bi-folder2-open"></i></div>
                 <div class="btn-text">规则文件管理</div>
@@ -628,182 +635,120 @@
         <footer> 电路配盘接线系统 - 教师端</footer>
     </div>
 
-    <!-- 新增考试模态框 -->
-    <div class="modal feature-hidden" :style="{display: showCreateExamModal ? 'block' : 'none'}">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">新增考试</h2>
-                <span class="close" @click="closeCreateExamModal">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="createExamForm" @submit.prevent="submitCreateExam">
-                    <div class="form-group">
-                        <label for="examName">考试名称:</label>
-                        <input type="text" id="examName" v-model="examForm.test_name" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="examType">考试题型:</label>
-                        <select id="examType" v-model="examForm.test_type" class="form-control" required>
-                            <option value="">请选择考试题型</option>
-                            <option value="电机正反转控制电路">电机正反转控制电路</option>
-                            <option value="星三角降压启动电路">星三角降压启动电路</option>
-                            <option value="多地控制电路">多地控制电路</option>
-                            <option value="顺序控制电路">顺序控制电路</option>
-                            <option value="时间控制电路">时间控制电路</option>
-                            <option value="自锁互锁控制电路">自锁互锁控制电路</option>
-                            <option value="双速电机控制电路">双速电机控制电路</option>
-                            <option value="能耗制动控制电路">能耗制动控制电路</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="examDuration">考试时长(分钟):</label>
-                        <input type="number" id="examDuration" v-model="examForm.duration_minutes" class="form-control" min="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="examStartTime">考试发布时间:</label>
-                        <input type="datetime-local" id="examStartTime" v-model="examForm.publish_time" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="examEndTime">考试截止时间:</label>
-                        <input type="datetime-local" id="examEndTime" v-model="examForm.deadline_time" class="form-control" required>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-modal btn-secondary-modal" @click="closeCreateExamModal">取消</button>
-                <button class="btn-modal btn-primary-modal" @click="submitCreateExam">创建考试</button>
-            </div>
-        </div>
-    </div>
+    <exam-manager v-if="teachingMode === 'exams'" :signed-in="{{ 'true' if session.get('teacher_id') else 'false' }}"
+        @close="teachingMode=null; $nextTick(() => $refs.examManagerButton.focus())"></exam-manager>
+    <teaching-dialog v-else-if="teachingMode" :mode="teachingMode"
+        :signed-in="{{ 'true' if session.get('teacher_id') else 'false' }}" @close="teachingMode=null"></teaching-dialog>
 
     <!-- 规则文件管理模态框 -->
     <div class="modal rule-manager-backdrop" :style="{display: showRuleManagerModal ? 'block' : 'none'}">
-        <div class="modal-content rule-manager-modal">
-            <div class="modal-header">
-                <h2 class="modal-title">
-                    <i class="bi bi-folder2-open me-2"></i>规则文件管理
-                </h2>
-                <div class="modal-actions">
-                    <button class="btn-modal btn-primary-modal me-2" @click="fetchRuleFiles">
-                        <i class="bi bi-arrow-clockwise me-1"></i>刷新
-                    </button>
-                    <span class="close" @click="closeRuleManagerModal">&times;</span>
+        <div class="modal-content roster rule-manager-modal" role="dialog" aria-modal="true" aria-labelledby="ruleManagerTitle">
+            {% raw %}
+            <header class="roster-banner">
+                <div class="roster-emblem"><i class="bi bi-folder2-open" aria-hidden="true"></i></div>
+                <div>
+                    <h2 id="ruleManagerTitle">规则文件管理</h2>
+                    <span>{{ ruleManagerLoading ? '正在读取文件目录…' : '共 ' + ruleFiles.length + ' 个规则文件' }}</span>
                 </div>
-            </div>
-            <div class="modal-body">
-                <div class="rule-manager-layout">
-                    <aside class="rule-file-list">
-                        <div class="rule-manager-side-head">
-                            <span>规则文件</span>
-                            {% raw %}<small>{{ ruleFiles.length }} 个</small>{% endraw %}
-                        </div>
-                        {% raw %}
-                        <button v-for="file in ruleFiles"
-                                :key="file.filename"
-                                type="button"
-                                class="rule-file-item"
-                                :class="{active: file.filename === selectedRuleFilename}"
+                <button type="button" class="roster-close" aria-label="关闭规则文件管理" @click="closeRuleManagerModal"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </header>
+            <div class="rule-manager-layout">
+                <aside class="rule-file-list" aria-label="规则文件目录">
+                    <div class="roster-heading">
+                        <h3>文件目录</h3>
+                        <button type="button" class="roster-link" :disabled="ruleManagerLoading" @click="ruleManagerMessage = ''; fetchRuleFiles()"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> 刷新</button>
+                    </div>
+                    <div v-if="ruleFiles.length" class="rule-file-items">
+                        <button v-for="file in ruleFiles" :key="file.filename" type="button"
+                                class="rule-file-item" :aria-pressed="file.filename === selectedRuleFilename"
                                 @click="selectRuleFile(file.filename)">
-                            <span class="rule-file-name">
-                                <i class="bi bi-filetype-json me-1"></i>{{ file.filename }}
-                            </span>
-                            <span class="rule-file-meta">
-                                {{ file.rule_count ?? '--' }} 条
-                                <b v-if="file.is_current">当前</b>
+                            <i class="bi bi-file-earmark-code rule-file-icon" aria-hidden="true"></i>
+                            <span class="rule-file-info">
+                                <strong>{{ file.filename }}</strong>
+                                <small>{{ file.rule_count ?? '—' }} 条规则<span v-if="file.is_current" class="rule-current">当前启用</span></small>
                             </span>
                         </button>
-                        <div v-if="!ruleFiles.length && !ruleManagerLoading" class="rule-manager-empty">
-                            暂无规则文件
-                        </div>
-                        {% endraw %}
-                    </aside>
-                    <section class="rule-file-editor">
-                        {% raw %}
-                        <div v-if="selectedRuleFilename" class="rule-editor-header">
+                    </div>
+                    <select v-if="ruleFiles.length" class="rule-file-picker" aria-label="选择规则文件"
+                            :value="selectedRuleFilename" @change="selectRuleFile($event.target.value)">
+                        <option v-for="file in ruleFiles" :key="file.filename" :value="file.filename">{{ file.filename }} · {{ file.rule_count ?? '—' }} 条{{ file.is_current ? ' · 当前启用' : '' }}</option>
+                    </select>
+                    <div v-if="!ruleFiles.length" class="rule-manager-empty">{{ ruleManagerLoading ? '正在读取…' : '暂无规则文件' }}</div>
+                </aside>
+                <section class="rule-file-editor" aria-label="规则编辑">
+                    <template v-if="selectedRuleFilename">
+                        <header class="rule-editor-header">
                             <div>
-                                <div class="rule-editor-title">{{ selectedRuleFilename }}</div>
-                                <div class="rule-editor-subtitle">
-                                    {{ selectedRuleRules.length }} 条规则
-                                    <span v-if="selectedRuleMeta?.modified_time"> · {{ selectedRuleMeta.modified_time }}</span>
-                                </div>
+                                <h3>{{ selectedRuleFilename }}</h3>
+                                <small v-if="selectedRuleMeta?.modified_time">修改时间 {{ selectedRuleMeta.modified_time }}</small>
                             </div>
-                            <div class="rule-editor-actions">
-                                <button class="btn-modal btn-danger-modal" @click="deleteManagedRuleFile" :disabled="selectedRuleFilename === 'current_rule.json'">
-                                    <i class="bi bi-trash me-1"></i>删除文件
-                                </button>
-                                <button class="btn-modal btn-secondary-modal" @click="activateManagedRule">
-                                    <i class="bi bi-check2-square me-1"></i>设为当前规则
-                                </button>
-                                <button class="btn-modal btn-primary-modal" @click="saveManagedRuleFile">
-                                    <i class="bi bi-save me-1"></i>保存修改
-                                </button>
-                            </div>
-                        </div>
-
-                        <div v-if="selectedRuleFilename" class="rule-rename-row">
-                            <input type="text" v-model="ruleRenameValue" class="form-control" :disabled="selectedRuleFilename === 'current_rule.json'">
-                            <button class="btn-modal btn-secondary-modal" @click="renameManagedRuleFile" :disabled="selectedRuleFilename === 'current_rule.json'">
-                                <i class="bi bi-pencil-square me-1"></i>重命名
+                            <button type="button" class="rule-tool" :aria-expanded="ruleFileToolsOpen" aria-controls="ruleFileTools"
+                                    @click="ruleFileToolsOpen = !ruleFileToolsOpen">
+                                文件操作 <i :class="ruleFileToolsOpen ? 'bi bi-chevron-up' : 'bi bi-chevron-down'" aria-hidden="true"></i>
                             </button>
+                        </header>
+                        <div v-show="ruleFileToolsOpen" class="rule-file-tools" id="ruleFileTools">
+                            <form class="rule-rename-row" @submit.prevent="renameManagedRuleFile">
+                                <input aria-label="新文件名" type="text" v-model="ruleRenameValue" :disabled="selectedRuleFilename === 'current_rule.json'">
+                                <button class="rule-tool" :disabled="selectedRuleFilename === 'current_rule.json'">重命名</button>
+                            </form>
+                            <div class="rule-file-actions">
+                                <button type="button" class="rule-tool" @click="activateManagedRule">设为当前规则</button>
+                                <button type="button" class="rule-tool rule-delete-file" @click="deleteManagedRuleFile" :disabled="selectedRuleFilename === 'current_rule.json'">删除文件</button>
+                            </div>
                         </div>
-
-                        <div v-if="selectedRuleFilename" class="rule-edit-table-wrap">
-                            <table class="rule-edit-table">
-                                <thead>
-                                <tr>
-                                    <th style="width: 72px;">ID</th>
-                                    <th>触点 A</th>
-                                    <th>触点 B</th>
-                                    <th style="width: 120px;">分值</th>
-                                    <th style="width: 92px;">操作</th>
-                                </tr>
-                                </thead>
+                        <div class="roster-heading rule-table-heading">
+                            <h3>接线规则 <small v-if="ruleFileReady">{{ selectedRuleRules.length }} 条</small></h3>
+                            <button type="button" class="roster-link" @click="addManagedRule" :disabled="!ruleFileReady"><i class="bi bi-plus-lg" aria-hidden="true"></i> 新增规则</button>
+                        </div>
+                        <div class="rule-edit-table-wrap" :key="selectedRuleFilename" ref="ruleTableViewport">
+                            <table v-if="ruleFileReady" class="rule-edit-table" aria-label="接线规则">
+                                <thead><tr><th>ID</th><th>触点 A</th><th>触点 B</th><th>分值</th><th>操作</th></tr></thead>
                                 <tbody>
-                                <tr v-for="(rule, index) in selectedRuleRules" :key="index">
-                                    <td>{{ index + 1 }}</td>
-                                    <td><input type="text" v-model.trim="rule.nodes[0]" class="form-control rule-cell-input"></td>
-                                    <td><input type="text" v-model.trim="rule.nodes[1]" class="form-control rule-cell-input"></td>
-                                    <td><input type="number" v-model.number="rule.score" class="form-control rule-cell-input"></td>
-                                    <td>
-                                        <button type="button" class="rule-row-delete" @click="removeManagedRule(index)" title="删除">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </td>
-                                </tr>
+                                    <tr v-for="(rule, index) in selectedRuleRules" :key="index">
+                                        <td class="rule-row-id">{{ index + 1 }}</td>
+                                        <td><label><span>触点 A</span><input type="text" v-model.trim="rule.nodes[0]" :aria-label="'第' + (index + 1) + '条触点 A'"></label></td>
+                                        <td><label><span>触点 B</span><input type="text" v-model.trim="rule.nodes[1]" :aria-label="'第' + (index + 1) + '条触点 B'"></label></td>
+                                        <td><label><span>分值</span><input type="number" v-model.number="rule.score" :aria-label="'第' + (index + 1) + '条分值'"></label></td>
+                                        <td class="rule-row-action"><button type="button" class="roster-delete" @click="removeManagedRule(index)" :aria-label="'删除第' + (index + 1) + '条规则'" title="删除规则"><i class="bi bi-trash" aria-hidden="true"></i></button></td>
+                                    </tr>
                                 </tbody>
                             </table>
+                            <div v-if="ruleFileReady && !selectedRuleRules.length" class="rule-manager-empty">暂无接线规则</div>
+                            <div v-if="!ruleFileReady && !ruleManagerMessage" class="rule-manager-empty">正在读取规则…</div>
                         </div>
-
-                        <div v-if="selectedRuleFilename" class="rule-manager-footer-tools">
-                            <button class="btn-modal btn-secondary-modal" @click="addManagedRule">
-                                <i class="bi bi-plus-circle me-1"></i>新增规则
-                            </button>
-                            <span class="rule-manager-message" v-text="ruleManagerMessage"></span>
-                        </div>
-
-                        <div v-if="!selectedRuleFilename" class="rule-manager-empty large">
-                            请选择左侧规则文件
-                        </div>
-                        {% endraw %}
-                    </section>
-                </div>
+                    </template>
+                    <div v-else class="rule-manager-empty">请选择规则文件</div>
+                    <footer class="rule-editor-footer" v-if="selectedRuleFilename || ruleManagerMessage">
+                        <span role="status">{{ ruleManagerMessage }}</span>
+                        <button v-if="selectedRuleFilename" type="button" class="btn-modal btn-primary-modal" :disabled="!ruleFileReady" @click="saveManagedRuleFile"><i class="bi bi-save" aria-hidden="true"></i> 保存修改</button>
+                    </footer>
+                </section>
             </div>
+            {% endraw %}
         </div>
     </div>
 
     <!-- 接线规则制定模态框 -->
+    <dialog ref="ruleMethodDialog" class="rule-method-dialog" aria-labelledby="rule-method-title">
+        <header>
+            <h2 id="rule-method-title">请选择制定方式：</h2>
+            <button type="button" class="roster-close" aria-label="关闭制定方式选择" @click="$refs.ruleMethodDialog.close()">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+        </header>
+        <div class="rule-method-actions">
+            <button type="button" disabled><i class="bi bi-lock" aria-hidden="true"></i> 上传电路图</button>
+            <button type="button" autofocus @click="openRuleBuilderModal"><i class="bi bi-pencil" aria-hidden="true"></i> 手动制定</button>
+        </div>
+    </dialog>
     <div class="modal rule-builder-backdrop" :style="{display: showRuleBuilderModal ? 'block' : 'none'}">
-        <div class="modal-content rule-builder-modal" :class="{fullscreen: ruleBuilder.isFullscreen}">
+        <div class="modal-content rule-builder-modal" role="dialog" aria-modal="true" aria-labelledby="ruleBuilderTitle">
             <div class="modal-header">
-                <h2 class="modal-title">
+                <h2 class="modal-title" id="ruleBuilderTitle">
                     <i class="bi bi-diagram-3 me-2"></i>制定接线规则
                 </h2>
-                <div class="modal-actions">
-                    <button type="button" class="rule-header-button" @click="toggleRuleBuilderFullscreen" :title="ruleBuilder.isFullscreen ? '退出全屏' : '全屏'">
-                        <i :class="ruleBuilder.isFullscreen ? 'bi bi-fullscreen-exit' : 'bi bi-fullscreen'"></i>
-                    </button>
-                    <span class="close" @click="closeRuleBuilderModal">&times;</span>
-                </div>
+                <button type="button" ref="ruleBuilderClose" class="roster-close" aria-label="关闭制定接线规则" @click="closeRuleBuilderModal"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
             </div>
             <div class="modal-body">
                 <div class="rule-toolbar">
@@ -847,43 +792,45 @@
                 <div class="rule-builder-layout">
                     <div class="rule-panel" ref="rulePanel">
                         {% raw %}
-                        <div class="rule-canvas-content" :style="ruleCanvasViewportStyle">
-                            <div class="rule-canvas-inner" ref="ruleCanvasContent" :style="ruleCanvasStyle">
-                                <svg class="rule-wire-layer" :width="ruleCanvas.width" :height="ruleCanvas.height">
-                                    <defs>
-                                        <filter id="ruleWireShadow" x="-20%" y="-20%" width="140%" height="140%">
-                                            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#1d4ed8" flood-opacity="0.22"/>
-                                        </filter>
-                                    </defs>
-                                    <g v-for="wire in ruleBuilder.wires" :key="wire.id" class="rule-wire-group" @click.stop="selectRuleWire(wire.id)">
-                                        <path :d="getRuleWirePath(wire)" class="rule-wire-underlay"></path>
-                                        <path :d="getRuleWirePath(wire)" class="rule-wire-path"></path>
-                                        <circle :cx="getRuleContactAnchor(wire.start).x" :cy="getRuleContactAnchor(wire.start).y" r="3.2" class="rule-wire-terminal"></circle>
-                                        <circle :cx="getRuleContactAnchor(wire.end).x" :cy="getRuleContactAnchor(wire.end).y" r="3.2" class="rule-wire-terminal"></circle>
-                                    </g>
-                                    <text v-for="wire in scoredRuleWires"
-                                          :key="'score-' + wire.id"
-                                          :x="getRuleWireLabelPoint(wire).x"
-                                          :y="getRuleWireLabelPoint(wire).y"
-                                          class="rule-score-label">{{ wire.score }}</text>
-                                </svg>
-                                <div class="rule-canvas-scale" ref="ruleCanvasScale">
-                                    <div v-for="region in ruleContactRegions" :key="region.name" class="rule-region">
-                                        <div class="rule-region-title">{{ region.title }}</div>
-                                        <div class="rule-component" v-for="component in region.components" :key="region.name + component.name">
-                                            <div class="rule-component-name">{{ component.name }}</div>
-                                            <button v-for="contact in component.contacts"
-                                                    :key="contact"
-                                                    :ref="el => setRuleContactRef(contact, el)"
-                                                    class="rule-contact"
-                                                    :class="{
-                                                        selected: ruleBuilder.selectedContact === contact,
-                                                        'rule-contact-wide': contact.length > 18
-                                                    }"
-                                                    :title="contact"
-                                                    @click="handleRuleContactClick(contact)">
-                                                {{ contact }}
-                                            </button>
+                        <div class="rule-canvas-frame">
+                            <div class="rule-canvas-content" :style="ruleCanvasViewportStyle">
+                                <div class="rule-canvas-inner" ref="ruleCanvasContent" :style="ruleCanvasStyle">
+                                    <svg class="rule-wire-layer" :width="ruleCanvas.width" :height="ruleCanvas.height">
+                                        <g v-for="wire in ruleWireRoutes" :key="wire.id" class="rule-wire-group"
+                                           :style="wireDisplayStyle(wire.id)" @click.stop="selectRuleWire(wire.id)">
+                                            <title>{{ wire.description }}</title>
+                                            <path :d="wire.path" class="rule-wire-underlay"></path>
+                                            <path :d="wire.path" class="rule-wire-path"></path>
+                                            <circle :cx="wire.start.x" :cy="wire.start.y" r="3.2" class="rule-wire-terminal"></circle>
+                                            <circle :cx="wire.end.x" :cy="wire.end.y" r="3.2" class="rule-wire-terminal"></circle>
+                                        </g>
+                                        <g v-for="wire in ruleWireRoutes" :key="'label-' + wire.id" class="rule-wire-caption" :style="wireDisplayStyle(wire.id)">
+                                            <template v-if="wire.label">
+                                                <rect :x="wire.label.x - wire.label.width / 2" :y="wire.label.y - 8" :width="wire.label.width" height="16" rx="4"></rect>
+                                                <text :x="wire.label.x" :y="wire.label.y" class="rule-score-label">{{ wire.score }}</text>
+                                            </template>
+                                        </g>
+                                    </svg>
+                                    <div class="rule-canvas-scale" ref="ruleCanvasScale" :style="{gridTemplateColumns: ruleWirePlan.gaps.map(gap => gap + 'px minmax(0, 1fr)').join(' ')}">
+                                        <div v-for="(region, column) in ruleContactRegions" :key="region.name" class="rule-region"
+                                             :style="{gridColumn: 2 * column + 2, gridRow: '1 / span ' + region.rowCount}">
+                                            <div class="rule-region-title">
+                                                <strong>{{ region.title }}</strong>
+                                                <span>{{ region.contacts.length }} 个触点</span>
+                                            </div>
+                                            <template v-for="contact in region.contacts" :key="contact.name">
+                                                <div v-if="contact.groupTitle" class="rule-component-name" :style="{gridRow: contact.row - 1, marginTop: (ruleWirePlan.rowSpacing[contact.row - 1] || 0) + 'px'}">{{ contact.groupTitle }}</div>
+                                                <button type="button" class="rule-contact"
+                                                        :ref="el => setRuleContactRef(contact.name, el)"
+                                                        :style="{gridRow: contact.row, marginTop: (ruleWirePlan.rowSpacing[contact.row] || 0) + 'px'}"
+                                                        :class="{selected: ruleBuilder.selectedContact === contact.name}"
+                                                        :aria-pressed="ruleBuilder.selectedContact === contact.name"
+                                                        :title="contact.name" @click="handleRuleContactClick(contact.name)">
+                                                    <span class="rule-socket" aria-hidden="true"></span>
+                                                    <span>{{ contact.name }}</span>
+                                                    <span class="rule-socket" aria-hidden="true"></span>
+                                                </button>
+                                            </template>
                                         </div>
                                     </div>
                                 </div>
@@ -896,12 +843,19 @@
                         <div class="rule-list">
                             {% raw %}
                             <div v-if="exportedRules.length === 0" class="rule-empty">暂无规则</div>
-                            <div v-for="rule in exportedRules" :key="rule.id" class="rule-preview-item">
+                            <div v-for="(wire, index) in ruleBuilder.wires" :key="wire.id" class="rule-preview-item" :style="{'--wire-color': wireColor(wire.id)}"
+                                 @mouseenter="ruleBuilder.highlightedWireId = wire.id" @mouseleave="ruleBuilder.highlightedWireId = null"
+                                 @focusin="ruleBuilder.highlightedWireId = wire.id" @focusout="ruleBuilder.highlightedWireId = null">
                                 <div class="rule-preview-head">
-                                    <strong>#{{ rule.id }}</strong>
-                                    <span>{{ rule.score }} 分</span>
+                                    <strong>#{{ index + 1 }}</strong>
+                                    <label class="rule-preview-score">
+                                        <input type="number" min="0" step="1" required :aria-label="'第' + (index + 1) + '条规则分值'"
+                                               :value="wire.score" @input="updateWireScore(wire, $event.target)"
+                                               @blur="$event.target.value = wire.score" @keydown.enter="$event.target.blur()">
+                                        分
+                                    </label>
                                 </div>
-                                <div class="rule-preview-nodes">{{ rule.nodes.join('、') }}</div>
+                                <div class="rule-preview-nodes">{{ wire.start }}、{{ wire.end }}</div>
                             </div>
                             {% endraw %}
                         </div>
@@ -912,6 +866,7 @@
                 <div class="footer-info">
                     <span class="info-text">连线 {% raw %}{{ ruleBuilder.wires.length }}{% endraw %} 条</span>
                     <span class="info-text">规则 {% raw %}{{ exportedRules.length }}{% endraw %} 条</span>
+                    <span class="rule-duplicate-notice" role="status" v-text="ruleBuilder.notice"></span>
                 </div>
                 <div class="footer-actions">
                     <button class="btn-modal btn-secondary-modal" @click="closeRuleBuilderModal">关闭</button>
@@ -1129,172 +1084,182 @@
     </div>
 
     <!-- 管理学生模态框 -->
-    <div class="modal" :style="{display: showManageStudentsModal ? 'block' : 'none'}">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">管理学生</h2>
-                <span class="close" @click="closeManageStudentsModal">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="student-management">
-                    <!-- 学生列表 -->
-                    <div class="student-list-section">
-                        <h3>学生列表</h3>
-                        <div class="table-container">
-                            <div class="list-controls mb-3">
-                                <div class="search-box">
-                                    <i class="bi bi-search"></i>
-                                    <input type="text" v-model="studentSearchQuery" placeholder="搜索学号、姓名或用户ID..." class="search-input">
-                                </div>
-                                <div class="sort-controls">
-                                    <label>排序方式:</label>
-                                    <select v-model="studentSortBy" class="sort-select" @change="sortStudents">
-                                        <option value="student_id">按学号排序</option>
-                                        <option value="name">按姓名排序</option>
-                                        <option value="user_id">按用户ID排序</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>学号</th>
-                                        <th>姓名</th>
-                                        <th>用户ID</th>
-                                        <th>密码</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
+    <div class="modal" :style="{display: showManageStudentsModal ? 'block' : 'none'}" @keydown.esc="closeManageStudentsModal">
+        <div class="modal-content roster" role="dialog" aria-modal="true" aria-labelledby="rosterTitle">
+            {% raw %}
+            <header class="roster-banner">
+                <div class="roster-emblem"><i class="bi bi-journal-bookmark" aria-hidden="true"></i></div>
+                <div>
+                    <h2 id="rosterTitle">管理学生</h2>
+                    <span v-if="!studentsLoading && !studentsError">在册学生 {{ students.length }} 人</span>
+                </div>
+                <button type="button" class="roster-close" aria-label="关闭管理学生" @click="closeManageStudentsModal"><i aria-hidden="true" class="bi bi-x-lg"></i></button>
+            </header>
+            <div class="roster-body">
+                <section class="roster-directory" aria-labelledby="rosterListTitle" :style="{'--roster-page-size': studentsPerPage}">
+                    <div class="roster-heading">
+                        <h3 id="rosterListTitle">学生名册</h3>
+                        <button type="button" class="roster-link" @click="fetchStudents" :disabled="studentsLoading || studentSaving"><i aria-hidden="true" class="bi bi-arrow-repeat"></i> 刷新</button>
+                    </div>
+                    <div class="roster-tools roster-directory-tools">
+                        <label class="roster-search">
+                            <i aria-hidden="true" class="bi bi-search"></i>
+                            <input type="search" ref="rosterSearch" aria-label="搜索学生" placeholder="搜索姓名、学号或用户 ID" v-model="studentSearchQuery" @input="studentPage = 1">
+                        </label>
+                        <select v-if="canManageClasses" aria-label="按班级筛选学生" v-model="studentClassFilter" @change="studentPage = 1">
+                            <option value="all">全部班级</option>
+                            <option value="unassigned">未分班</option>
+                            <option v-for="group in rosterClasses" :key="group.id" :value="group.id">{{ group.name }}</option>
+                        </select>
+                        <select aria-label="学生排序方式" :disabled="studentSaving" v-model="studentSortBy" @change="studentPage = 1; fetchStudents()">
+                            <option value="student_id">按学号排序</option>
+                            <option value="name">按姓名排序</option>
+                            <option value="user_id">按用户 ID 排序</option>
+                        </select>
+                    </div>
+                    <div class="roster-state" v-if="studentsError" role="alert">
+                        <i aria-hidden="true" class="bi bi-journal-text"></i>{{ studentsError }}
+                        <button class="roster-link" @click="fetchStudents">重新加载</button>
+                    </div>
+                    <div class="roster-state" v-else-if="studentsLoading" role="status">正在加载学生名册…</div>
+                    <div class="roster-state" v-else-if="!filteredManagedStudents.length">
+                        <i aria-hidden="true" class="bi bi-search"></i>{{ studentSearchQuery.trim() ? '没有找到匹配的学生' : studentClassFilter !== 'all' ? '该筛选下暂无学生' : '暂无在册学生' }}
+                        <button v-if="studentSearchQuery.trim()" class="roster-link" @click="studentSearchQuery = ''; $refs.rosterSearch.focus()">清除搜索</button>
+                    </div>
+                    <template v-else>
+                        <div class="roster-table-viewport">
+                            <table class="roster-table" aria-label="学生名册">
+                                <thead><tr><th>姓名</th><th>学号</th><th>用户 ID</th><th v-if="canManageClasses">所属班级</th><th>操作</th></tr></thead>
                                 <tbody>
-                                    {% raw %}
-                                    <tr v-for="student in filteredManagedStudents" :key="student.user_id || student.id">
-                                        <td>{{ student.sno || student.student_id }}</td>
-                                        <td>{{ student.name }}</td>
-                                        <td>{{ student.user_id || student.id }}</td>
-                                        <td>{{ student.student_password || student.password || '--' }}</td>
-                                        <td>
-                                            <button class="btn-action btn-edit" @click="editStudent(student)">编辑</button>
-                                            <button class="btn-action btn-delete" @click="deleteStudent(student.user_id || student.id)">删除</button>
-                                        </td>
+                                    <tr v-for="student in pagedStudents" :key="student.user_id || student.id"
+                                        :class="{active: isEditing && currentStudent.user_id === (student.user_id || student.id)}">
+                                        <td><div class="roster-person">
+                                            <span class="roster-avatar" aria-hidden="true">{{ student.name.slice(0, 1) || '生' }}</span>
+                                            <strong>{{ student.name || '未填写' }}</strong>
+                                        </div></td>
+                                        <td class="roster-number">{{ student.sno || student.student_id }}</td>
+                                        <td class="roster-number roster-id">{{ student.user_id || student.id }}</td>
+                                        <td v-if="canManageClasses" class="roster-class-name">{{ classNames(student.classIds) }}</td>
+                                        <td><div class="roster-actions">
+                                            <a v-if="canManageClasses" class="roster-edit" :href="'/staff/students/' + encodeURIComponent(student.sno) + '/scores'"
+                                               target="_blank" rel="noopener" :aria-label="'查看' + student.name + '的成绩'" title="查看成绩">
+                                                <i class="bi bi-graph-up" aria-hidden="true"></i><span>成绩</span></a>
+                                            <button class="roster-edit" :aria-label="'编辑' + student.name" @click="editStudent(student)" :disabled="studentSaving"><i aria-hidden="true" class="bi bi-pencil"></i><span>编辑</span></button>
+                                            <button class="roster-delete" :aria-label="'删除' + student.name" title="删除学生" @click="deleteStudent(student)" :disabled="studentSaving"><i aria-hidden="true" class="bi bi-trash"></i></button>
+                                        </div></td>
                                     </tr>
-                                    <tr v-if="filteredManagedStudents.length === 0">
-                                        <td colspan="5" style="text-align: center;">暂无学生数据</td>
-                                    </tr>
-                                    {% endraw %}
                                 </tbody>
                             </table>
                         </div>
+                        <div class="roster-pagination">
+                            <span>{{ studentSearchQuery.trim() || studentClassFilter !== 'all' ? '匹配' : '共' }} {{ filteredManagedStudents.length }} 人</span>
+                            <div>
+                                <button aria-label="上一页" @click="studentPage--" :disabled="studentPage <= 1"><i aria-hidden="true" class="bi bi-chevron-left"></i></button>
+                                <span>{{ studentPage }} / {{ studentPageCount }}</span>
+                                <button aria-label="下一页" @click="studentPage++" :disabled="studentPage >= studentPageCount"><i aria-hidden="true" class="bi bi-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </template>
+                </section>
+                <section class="roster-editor" aria-labelledby="studentEditorTitle">
+                    <div class="roster-heading">
+                        <h3 id="studentEditorTitle"><i aria-hidden="true" :class="isEditing ? 'bi bi-person-gear' : 'bi bi-person-plus'"></i>{{ isEditing ? '编辑学生' : '添加学生' }}</h3>
+                        <small v-if="isEditing">ID {{ currentStudent.user_id }}</small>
                     </div>
-
-                    <!-- 添加/编辑学生表单 -->
-                    <div class="student-form-section">
-                        <h3>{% raw %}{{ isEditing ? '编辑学生' : '添加学生' }}{% endraw %}</h3>
-                        <form @submit.prevent="saveStudent">
-                            <div class="form-group">
-                                <label for="studentId">学号:</label>
-                                <input type="text" id="studentId" v-model="currentStudent.sno" class="form-control" required>
+                    <form @submit.prevent="saveStudent">
+                        <fieldset :disabled="studentSaving">
+                            <label for="studentId">学号</label>
+                            <input id="studentId" ref="studentNumber" v-model="currentStudent.sno" placeholder="输入学生学号" required>
+                            <label for="studentName">姓名</label>
+                            <input id="studentName" v-model="currentStudent.name" placeholder="输入学生姓名" required>
+                            <label for="studentPassword">登录密码</label>
+                            <div class="roster-password">
+                                <input :type="studentPasswordVisible ? 'text' : 'password'" id="studentPassword" v-model="currentStudent.student_password" autocomplete="new-password" placeholder="输入登录密码" required>
+                                <button type="button" :aria-label="studentPasswordVisible ? '隐藏密码' : '显示密码'" @click="studentPasswordVisible = !studentPasswordVisible"><i aria-hidden="true" :class="studentPasswordVisible ? 'bi bi-eye-slash' : 'bi bi-eye'"></i></button>
                             </div>
-                            <div class="form-group">
-                                <label for="studentName">姓名:</label>
-                                <input type="text" id="studentName" v-model="currentStudent.name" class="form-control" required>
+                            <template v-if="isEditing && canManageClasses">
+                                <label for="studentClass" class="roster-class-label">所属班级</label>
+                                <select id="studentClass" v-model="currentStudent.classChoice">
+                                    <option v-if="currentStudent.classIds.length > 1" value="multiple" disabled>{{ classNames(currentStudent.classIds) }}</option>
+                                    <option value="">未分班</option>
+                                    <option v-for="group in rosterClasses" :key="group.id" :value="String(group.id)">{{ group.name }}</option>
+                                </select>
+                            </template>
+                            <div class="roster-form-actions">
+                                <button type="submit" class="roster-primary">{{ studentSaving ? '正在保存…' : isEditing ? '保存修改' : '添加学生' }}</button>
+                                <button v-if="isEditing" type="button" class="roster-link" @click="cancelEdit">取消编辑</button>
                             </div>
-                            <div class="form-group">
-                                <label for="studentPassword">密码:</label>
-                                <input type="text" id="studentPassword" v-model="currentStudent.student_password" class="form-control" required>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn-modal btn-primary-modal">{% raw %}{{ isEditing ? '更新' : '添加' }}{% endraw %}</button>
-                                <button type="button" class="btn-modal btn-secondary-modal" @click="cancelEdit" v-if="isEditing">取消</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                        </fieldset>
+                    </form>
+                    <p class="roster-notice" role="status" v-if="studentNotice">{{ studentNotice }}</p>
+                </section>
             </div>
-            <div class="modal-footer">
-                <button class="btn-modal btn-secondary-modal" @click="closeManageStudentsModal">关闭</button>
-            </div>
+            {% endraw %}
         </div>
     </div>
 
     <!-- 注册审批模态框 -->
-    <div class="modal" :style="{display: showApprovalModal ? 'block' : 'none'}">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">
-                    <i class="bi bi-person-check me-2"></i>注册审批
-                </h2>
-                <div class="modal-actions">
-                    <button class="btn-modal btn-primary-modal me-2" @click="refreshRegistrationRequests">
-                        <i class="bi bi-arrow-clockwise me-1"></i>刷新
-                    </button>
-                    <span class="close" @click="closeApprovalModal">&times;</span>
+    <div class="modal" :style="{display: showApprovalModal ? 'block' : 'none'}" @keydown.esc="closeApprovalModal">
+        <div class="modal-content roster approval-modal" role="dialog" aria-modal="true" aria-labelledby="approvalTitle">
+            {% raw %}
+            <header class="roster-banner">
+                <div class="roster-emblem"><i class="bi bi-person-check" aria-hidden="true"></i></div>
+                <div>
+                    <h2 id="approvalTitle">注册审批</h2>
+                    <span>学生与教师注册申请</span>
                 </div>
-            </div>
-            <div class="modal-body">
-                <div class="stats-container">
-                    <div class="stat-card">待审批<br>{% raw %}{{ pendingRequestsCount || '--' }}{% endraw %}</div>
-                    <div class="stat-card">已批准<br>{% raw %}{{ approvedRequestsCount || '--' }}{% endraw %}</div>
-                    <div class="stat-card">已拒绝<br>{% raw %}{{ rejectedRequestsCount || '--' }}{% endraw %}</div>
-                </div>
-
-                <div class="section-header">
-                    <h3>待审批请求</h3>
-                    <div class="list-controls">
-                        <div class="search-box">
-                            <i class="bi bi-search"></i>
-                            <input type="text" v-model="approvalSearchQuery" placeholder="搜索用户ID或姓名..." class="search-input">
+                <button type="button" class="roster-close" aria-label="关闭注册审批" @click="closeApprovalModal"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </header>
+            <div class="approval-body">
+                <dl class="approval-stats">
+                    <div><dt>待审批</dt><dd>{{ approvalLoading || approvalError ? '—' : registrationRequests.length }}</dd></div>
+                    <div><dt>本次已批准</dt><dd>{{ approvedRequestsCount }}</dd></div>
+                    <div><dt>本次已拒绝</dt><dd>{{ rejectedRequestsCount }}</dd></div>
+                </dl>
+                <section class="approval-list" aria-labelledby="approvalListTitle">
+                    <div class="roster-heading approval-heading">
+                        <h3 id="approvalListTitle">待审批申请</h3>
+                        <div class="roster-tools approval-tools">
+                            <label class="roster-search">
+                                <i class="bi bi-search" aria-hidden="true"></i>
+                                <input type="search" aria-label="搜索注册申请" placeholder="搜索姓名或用户 ID" v-model="approvalSearchQuery">
+                            </label>
+                            <button type="button" class="roster-link" @click="fetchRegistrationRequests" :disabled="approvalLoading || approvalSubmitting"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> 刷新</button>
                         </div>
                     </div>
-                </div>
-
-                <div class="table-container">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>用户ID</th>
-                                <th>姓名</th>
-                                <th>用户类型</th>
-                                <th>审批人</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% raw %}
-                            <tr v-for="request in filteredRequests" :key="request.user_id">
-                                <td>{{ request.user_id }}</td>
-                                <td>{{ request.user_name }}</td>
-                                <td>
-                                    <span class="badge" :class="request.user_type === 'student' ? 'bg-info' : 'bg-warning'">
-                                        {{ request.user_type_text }}
-                                    </span>
-                                </td>
-                                <td>{{ request.user_approve }}</td>
-                                <td>
-                                    <button class="btn-action btn-approve me-1" @click="approveRequest(request.user_id)">
-                                        <i class="bi bi-check-circle"></i> 批准
-                                    </button>
-                                    <button class="btn-action btn-reject" @click="rejectRequest(request.user_id)">
-                                        <i class="bi bi-x-circle"></i> 拒绝
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr v-if="filteredRequests.length === 0">
-                                <td colspan="5" style="text-align: center;">暂无待审批请求</td>
-                            </tr>
-                            {% endraw %}
-                        </tbody>
-                    </table>
-                </div>
+                    <div v-if="approvalLoading" class="approval-state" role="status">正在读取注册申请…</div>
+                    <div v-else-if="approvalError" class="approval-state" role="alert">
+                        <i class="bi bi-exclamation-circle" aria-hidden="true"></i>{{ approvalError }}
+                        <button type="button" class="roster-link" @click="fetchRegistrationRequests">重新加载</button>
+                    </div>
+                    <div v-else-if="!filteredRequests.length" class="approval-state" role="status">
+                        <i :class="approvalSearchQuery.trim() ? 'bi bi-search' : 'bi bi-inbox'" aria-hidden="true"></i>
+                        {{ approvalSearchQuery.trim() ? '没有找到匹配的申请' : '暂无待审批申请' }}
+                        <button v-if="approvalSearchQuery.trim()" type="button" class="roster-link" @click="approvalSearchQuery = ''">清除搜索</button>
+                    </div>
+                    <div v-else class="approval-table-wrap">
+                        <table class="roster-table approval-table" aria-label="待审批注册申请">
+                            <thead><tr><th>申请人</th><th>申请身份</th><th>审批人</th><th>操作</th></tr></thead>
+                            <tbody>
+                                <tr v-for="request in filteredRequests" :key="request.user_id">
+                                    <td><strong>{{ request.user_name }}</strong><small class="approval-id">ID {{ request.user_id }}</small></td>
+                                    <td><span class="approval-role">{{ request.user_type_text }}</span></td>
+                                    <td class="approval-reviewer"><span>审批人 </span>{{ request.user_approve }}</td>
+                                    <td><div class="approval-actions">
+                                        <button type="button" class="approval-accept" :disabled="approvalSubmitting" @click="reviewRegistration(request, true)">批准</button>
+                                        <button type="button" class="approval-reject" :disabled="approvalSubmitting" @click="reviewRegistration(request, false)">拒绝</button>
+                                    </div></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <footer class="approval-footer">
+                        <span role="status">{{ approvalNotice || (approvalLoading || approvalError ? '' : '共 ' + filteredRequests.length + ' 条申请') }}</span>
+                        <span v-if="lastApprovalUpdateTime">最近更新 {{ lastApprovalUpdateTime }}</span>
+                    </footer>
+                </section>
             </div>
-            <div class="modal-footer">
-                <div class="footer-info">
-                    <span class="info-text">共 {% raw %}{{ filteredRequests.length }}{% endraw %} 条待审批请求</span>
-                    <span class="info-text">最后更新：{% raw %}{{ lastApprovalUpdateTime }}{% endraw %}</span>
-                </div>
-                <div class="footer-actions">
-                    <button class="btn-modal btn-secondary-modal" @click="closeApprovalModal">关闭</button>
-                </div>
-            </div>
+            {% endraw %}
         </div>
     </div>
 </div>
@@ -1720,24 +1685,198 @@
         }
     }
 
-    /* 学生管理样式 */
-    .student-management {
+    .roster, .rule-builder-modal {
+        --rule-workspace-bg: linear-gradient(180deg, #ffffff 0%, #f7fafc 42%, #eef4f8 100%);
+    }
+
+    /* 教师端学生名册 */
+    .modal-content.roster {
+        --roster-ink: var(--text-primary);
+        --roster-accent: var(--primary-color);
+        --roster-line: #dbe4ee;
+        width: min(1100px, calc(100% - 32px));
+        max-width: none;
+        max-height: 92vh;
+        margin: 4vh auto;
+        padding: 0;
+        overflow: auto;
+        background: var(--rule-workspace-bg);
+        color: var(--roster-ink);
+    }
+
+    .roster button { cursor: pointer; }
+    .roster button:disabled { opacity: .45; cursor: default; }
+    .roster :focus-visible { outline: 2px solid var(--light-blue-dark); outline-offset: 2px; }
+    .roster-banner, .roster-heading, .roster-person, .roster-actions,
+    .roster-tools, .roster-pagination, .roster-pagination > div, .roster-form-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .roster-banner {
+        gap: 16px;
+        padding: 22px 26px;
+        flex: none; color: var(--primary-color); background: white;
+        border-bottom: 1px solid var(--roster-line);
+    }
+    .roster-emblem {
+        display: grid; place-items: center; width: 48px; height: 48px;
+        border: 1px solid var(--roster-line); border-radius: 12px;
+        background: #eef2ff; color: var(--primary-color); font-size: 23px;
+    }
+    .roster-banner h2 { margin: 0; font-size: 23px; font-weight: 700; }
+    .roster-banner span { font-size: 13px; color: var(--text-secondary); }
+    .roster-close {
+        margin-left: auto; align-self: flex-start; width: 34px; height: 34px;
+        border: 1px solid transparent; border-radius: 8px; color: #334155; background: #eef2f7;
+    }
+    .roster-close:hover { background: #dbeafe; color: #1d4ed8; }
+    .rule-method-dialog {
+        width: min(400px, calc(100% - 32px)); margin: auto; padding: 22px;
+        border: 1px solid #dbe3ee; border-radius: 16px; background: white; box-shadow: var(--shadow-lg);
+    }
+    .rule-method-dialog::backdrop { background: rgba(15, 23, 42, .42); }
+    .rule-method-dialog header { display: flex; align-items: center; gap: 12px; }
+    .rule-method-dialog h2 { margin: 0; font-size: 20px; color: var(--primary-color); }
+    .rule-method-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+    .rule-method-actions button {
+        min-height: 46px; border: 1px solid transparent; border-radius: 9px;
+        background: var(--primary-color); color: white; font-weight: 600;
+    }
+    .rule-method-actions button:enabled:hover { background: var(--primary-dark); }
+    .rule-method-actions button:disabled { background: #f1f5f9; border-color: #dbe3ee; color: #64748b; cursor: not-allowed; }
+    .roster-body {
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 29%);
+        gap: 16px; padding: 20px;
+    }
+    .roster-directory, .roster-editor {
+        min-width: 0; border: 1px solid var(--roster-line); border-radius: 12px; background: #fff;
+        overflow: hidden;
+    }
+    .roster-directory {
+        --roster-head-height: 37px;
+        --roster-row-height: 51px;
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 30px;
+        grid-template-rows: auto auto calc(var(--roster-head-height) + var(--roster-page-size) * var(--roster-row-height)) minmax(44px, auto);
+    }
+    .roster-table-viewport { overflow: auto; }
+    .roster-heading { justify-content: space-between; padding: 18px 20px 12px; }
+    .roster-heading h3 { margin: 0; font-size: 18px; font-weight: 700; color: var(--roster-ink); }
+    .roster-link, .roster-edit, .roster-delete, .roster-password button {
+        background: transparent; border: 0; padding: 5px 7px; border-radius: 5px;
+        font-size: 13px; font-weight: 600; color: var(--roster-accent);
+    }
+    .roster-link:hover, .roster-edit:hover { background: #eff6ff; }
+    .roster-tools { padding: 0 20px 16px; }
+    .roster-search { position: relative; min-width: 0; flex: 1; }
+    .roster-search i { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); color: var(--text-secondary); }
+    .roster-tools input, .roster-tools select, .roster-editor input, .roster-editor select {
+        width: 100%; height: 38px; padding: 0 10px;
+        border: 1px solid #cbd5e1; border-radius: 7px; background: white; color: var(--roster-ink); font-size: 14px;
+    }
+    .roster-search input { padding-left: 35px; }
+    .roster-tools select { width: auto; max-width: 42%; }
+    .roster-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .roster-table :is(th, td) { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; }
+    .roster-table :is(th, td):first-child { padding-left: 20px; }
+    .roster-table th { background: #f1f5f9; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+    .roster-table tbody tr:hover { background: var(--light-bg); }
+    .roster-table tbody tr.active { background: #eff6ff; box-shadow: inset 3px 0 var(--roster-accent); }
+    .roster-person { gap: 9px; overflow-wrap: anywhere; }
+    .roster-avatar {
+        display: grid; place-items: center; width: 32px; height: 32px; flex: none;
+        border-radius: 9px; background: #eef2ff; color: var(--primary-dark); font-weight: 700;
+    }
+    .roster-table tr:nth-child(3n + 2) .roster-avatar { background: #eaf2ff; color: #325b93; }
+    .roster-table tr:nth-child(3n) .roster-avatar { background: #f1f5f9; color: #475569; }
+    .roster-number { font-family: ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+    .roster-id { color: var(--text-secondary); }
+    .roster-actions { gap: 2px; }
+    .roster-edit { white-space: nowrap; text-decoration: none; }
+    .roster-edit span { margin-left: 4px; }
+    .roster-delete { color: #80545a; }
+    .roster-delete:hover { color: #9d282e; background: #fff0ee; }
+    .roster-pagination { justify-content: space-between; padding: 10px 18px; font-size: 13px; color: var(--text-secondary); }
+    .roster-pagination button { border: 1px solid var(--roster-line); border-radius: 6px; background: white; color: inherit; }
+    .roster-state { grid-row: 3 / 5; align-content: center; display: grid; justify-items: center; gap: 8px; padding: 40px 16px; color: var(--text-secondary); font-size: 14px; }
+    .roster-state > i { font-size: 25px; }
+    .roster-editor .roster-heading { padding: 16px 18px; border-bottom: 1px solid var(--roster-line); background: var(--light-bg); }
+    .roster-editor h3 i { margin-right: 8px; color: var(--roster-accent); }
+    .roster-editor form { padding: 16px 18px 20px; }
+    .roster-editor label { display: block; margin: 0 0 5px; font-size: 13px; font-weight: 600; }
+    .roster-class-name { overflow-wrap: anywhere; }
+    .roster-editor label.roster-class-label, .roster-editor input + label { margin-top: 14px; }
+    .roster-password { position: relative; }
+    .roster-password input { padding-right: 40px; }
+    .roster-password button { position: absolute; top: 2px; right: 3px; height: 34px; font-size: 16px; }
+    .roster-form-actions { margin-top: 20px; }
+    .roster-primary { flex: 1; border: 0; border-radius: 7px; padding: 9px; background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: white; font-weight: 600; }
+    .roster-primary:hover { background: linear-gradient(135deg, var(--primary-dark), var(--primary-color)); }
+    .roster-notice { margin: 0 18px 16px; font-size: 13px; color: var(--roster-ink); }
+    @media (min-width: 781px) {
+        .roster-editor { contain: size; overflow: auto; display: flex; flex-direction: column; }
+        .roster-editor form, .roster-editor fieldset { flex: 1; display: flex; flex-direction: column; }
+        .roster-form-actions { margin-top: auto; padding-top: 20px; }
+    }
+    @media (max-width: 780px) {
+        .roster-body { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 520px) {
+        .modal-content.roster { width: calc(100% - 12px); max-height: 96vh; margin: 2vh auto; }
+        .roster-banner { padding: 14px; }
+        .roster-body { padding: 8px; gap: 10px; }
+        .roster-heading { padding: 14px 10px 10px; }
+        .roster-directory-tools { flex-wrap: wrap; }
+        .roster-directory-tools .roster-search { flex-basis: 100%; }
+        .roster-directory-tools select { flex: 1; min-width: 0; max-width: 100%; }
+        .roster-tools { gap: 5px; padding: 0 8px 12px; }
+        .roster-tools :is(input, select), .roster-number { font-size: 12px; }
+        .roster-table :is(td, th), .roster-table :is(td, th):first-child { padding: 8px 4px; }
+        .roster-directory { --roster-head-height: 35px; --roster-row-height: 46.5px; }
+        .roster-avatar, .roster-edit span { display: none; }
     }
 
-    @media (max-width: 768px) {
-        .student-management {
-            grid-template-columns: 1fr;
-        }
+    .approval-body { padding: 20px; }
+    .approval-stats {
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin: 0 0 16px; padding: 16px 0;
+        background: #fff; border: 1px solid var(--roster-line); border-radius: 12px;
     }
-
-    .student-list-section h3,
-    .student-form-section h3 {
-        margin-bottom: 15px;
-        color: var(--primary-color);
-        font-weight: 600;
+    .approval-stats > div { padding-inline: 22px; border-inline-start: 1px solid var(--roster-line); }
+    .approval-stats > div:first-child { border: 0; color: var(--primary-color); }
+    .approval-stats dt { font-size: 13px; font-weight: 600; }
+    .approval-stats dd { margin: 4px 0 0; font-size: 28px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .approval-list { background: white; border: 1px solid var(--roster-line); border-radius: 12px; overflow: hidden; }
+    .approval-heading { flex-wrap: wrap; padding-bottom: 16px; }
+    .approval-tools { flex-wrap: nowrap; padding: 0; }
+    .approval-tools button { flex: none; }
+    .approval-table-wrap { max-height: 42vh; overflow: auto; }
+    .approval-table th { position: sticky; top: 0; z-index: 1; }
+    .approval-table td { overflow-wrap: anywhere; }
+    .approval-id { display: block; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .approval-role { display: inline-block; padding: 2px 8px; background: #eef2ff; color: var(--primary-dark); border-radius: 5px; font-size: 12px; }
+    .approval-reviewer span { display: none; }
+    .approval-actions { display: flex; gap: 8px; }
+    .approval-actions button { border-radius: 6px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+    .approval-accept { color: white; background: var(--primary-color); border: 1px solid var(--primary-color); }
+    .approval-accept:hover { background: var(--primary-dark); }
+    .approval-reject { color: #9f3842; background: white; border: 1px solid #e4c9cb; }
+    .approval-reject:hover { background: #fff1f2; }
+    .approval-state { min-height: 160px; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; padding: 20px; color: var(--text-secondary); }
+    .approval-state > i { font-size: 26px; color: var(--primary-color); }
+    .approval-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; padding: 12px 20px; border-top: 1px solid var(--roster-line); color: var(--text-secondary); font-size: 12px; }
+    @media (max-width: 560px) {
+        .approval-body { padding: 10px; }
+        .approval-stats > div { padding-inline: 12px; }
+        .approval-tools { width: 100%; flex-direction: row; }
+        .approval-table thead { display: none; }
+        .approval-table tbody { display: block; }
+        .approval-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 12px; border-top: 1px solid var(--roster-line); }
+        .approval-table tr td, .approval-table tr td:first-child { padding: 0; border: 0; }
+        .approval-table tr td:nth-child(2) { justify-self: end; }
+        .approval-reviewer { color: var(--text-secondary); font-size: 12px; }
+        .approval-reviewer span { display: inline; }
+        .approval-footer { padding: 10px 12px; }
     }
 
     .table-container {
@@ -1747,45 +1886,6 @@
     .table th,
     .table td {
         vertical-align: middle;
-    }
-
-    .btn-edit {
-        background-color: var(--warning-color);
-        color: white;
-    }
-
-    .btn-edit:hover {
-        background-color: var(--warning-dark);
-    }
-
-    .btn-delete {
-        background-color: var(--danger-color);
-        color: white;
-    }
-
-    .btn-delete:hover {
-        background-color: var(--danger-dark);
-    }
-
-    .student-form-section .form-group {
-        margin-bottom: 15px;
-    }
-
-    .student-form-section .form-group label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 500;
-    }
-
-    .student-form-section .form-control {
-        padding: 8px 12px;  /* 与通用定义不同的padding值 */
-        border-radius: 6px;  /* 与通用定义不同的border-radius值 */
-    }
-
-    .form-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
     }
 
     .btn-modal {
@@ -1923,223 +2023,110 @@
         }
     }
 
-    .rule-manager-modal {
-        width: min(1280px, calc(100vw - 32px));
-        height: min(820px, calc(100vh - 36px));
+    .modal-content.rule-manager-modal {
+        width: min(1180px, calc(100% - 32px));
+        height: min(760px, 92vh);
         display: flex;
         flex-direction: column;
-        border-radius: 14px;
     }
-
-    .rule-manager-modal .modal-body {
-        flex: 1 1 auto;
-        min-height: 0;
-        padding: 0;
-    }
-
     .rule-manager-layout {
-        height: 100%;
-        display: grid;
-        grid-template-columns: 320px minmax(0, 1fr);
+        flex: 1; min-height: 0; padding: 20px;
+        display: grid; grid-template-columns: clamp(210px, 23%, 268px) minmax(0, 1fr);
         gap: 18px;
-        min-height: 0;
     }
-
-    .rule-file-list,
-    .rule-file-editor {
-        min-height: 0;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
+    .rule-file-list, .rule-file-editor {
+        display: flex; flex-direction: column; min-width: 0; min-height: 0;
+        background: white; border: 1px solid var(--roster-line); border-radius: 12px; overflow: hidden;
     }
-
-    .rule-file-list {
-        padding: 12px;
-        overflow: auto;
-    }
-
-    .rule-manager-side-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        color: #334155;
-        font-weight: 700;
-        margin-bottom: 10px;
-        padding: 0 4px;
-    }
-
-    .rule-manager-side-head small {
-        color: #64748b;
-        font-weight: 600;
-    }
-
+    .rule-file-list .roster-heading { border-bottom: 1px solid var(--roster-line); }
+    .rule-file-items { padding: 8px; overflow-y: auto; }
     .rule-file-item {
-        width: 100%;
-        border: 1px solid transparent;
-        background: #ffffff;
-        border-radius: 8px;
-        padding: 11px 12px;
-        margin-bottom: 8px;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
-        text-align: left;
-        transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+        display: flex; align-items: center; gap: 12px; width: 100%;
+        background: transparent; color: var(--roster-ink); border: 1px solid transparent;
+        border-radius: 8px; padding: 12px 10px; text-align: left;
     }
-
-    .rule-file-item:hover,
-    .rule-file-item.active {
-        border-color: #14b8a6;
-        background: #ecfeff;
-        transform: translateY(-1px);
+    .rule-file-item:hover { background: var(--light-bg); }
+    .rule-file-item[aria-pressed="true"] { background: #eff6ff; border-color: #bfdbfe; }
+    .rule-file-icon {
+        flex: none; display: grid; place-items: center; width: 34px; height: 38px;
+        color: var(--roster-accent); background: #eef2f7; border-radius: 7px; font-size: 18px;
     }
-
-    .rule-file-name {
-        max-width: 100%;
-        color: #0f172a;
-        font-weight: 700;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    .rule-file-item[aria-pressed="true"] .rule-file-icon { background: var(--roster-accent); color: #fff; }
+    .rule-file-info { min-width: 0; display: grid; gap: 3px; }
+    .rule-file-info strong { font-size: 14px; overflow-wrap: anywhere; }
+    .rule-file-info small, .rule-editor-header small, .rule-table-heading small { font-size: 12px; color: var(--text-secondary); }
+    .rule-current {
+        display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px;
+        font-size: 11px; color: #1d4ed8; background: #dbeafe;
     }
-
-    .rule-file-meta {
-        color: #64748b;
-        font-size: 12px;
+    .rule-file-picker { display: none; }
+    .rule-editor-header, .rule-editor-footer, .rule-file-tools, .rule-file-actions, .rule-rename-row {
+        display: flex; align-items: center; gap: 10px;
     }
-
-    .rule-file-meta b {
-        display: inline-block;
-        margin-left: 6px;
-        color: #0f766e;
-        background: #ccfbf1;
-        border-radius: 999px;
-        padding: 1px 7px;
-        font-size: 11px;
+    .rule-editor-header, .rule-editor-footer { justify-content: space-between; padding: 16px 20px; flex: none; }
+    .rule-editor-header { background: var(--light-bg); border-bottom: 1px solid var(--roster-line); }
+    .rule-editor-header h3 { margin: 0 0 2px; overflow-wrap: anywhere; font-size: 20px; color: var(--roster-ink); }
+    .rule-tool {
+        flex: none; border: 1px solid var(--roster-line); border-radius: 7px; background: white;
+        padding: 7px 10px; color: var(--roster-accent); font-size: 13px; font-weight: 600;
     }
-
-    .rule-file-editor {
-        display: flex;
-        flex-direction: column;
-        padding: 16px;
-        overflow: hidden;
+    .rule-tool:hover:not(:disabled) { background: #eff6ff; }
+    .rule-delete-file { color: #92434c; }
+    .rule-file-tools { flex-wrap: wrap; padding: 14px 20px; background: var(--light-bg); border-bottom: 1px solid var(--roster-line); }
+    .rule-rename-row { flex: 1 1 240px; min-width: 0; }
+    .rule-file-tools input, .rule-edit-table input, .rule-file-picker {
+        min-width: 0; width: 100%; border: 1px solid #cbd5e1; background: #fff;
+        color: var(--roster-ink); border-radius: 7px; height: 38px; padding: 0 10px; font-size: 14px;
     }
-
-    .rule-editor-header,
-    .rule-rename-row,
-    .rule-manager-footer-tools {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex: 0 0 auto;
-    }
-
-    .rule-editor-header {
-        padding-bottom: 12px;
-        border-bottom: 1px solid #e2e8f0;
-        margin-bottom: 12px;
-    }
-
-    .rule-editor-title {
-        font-size: 20px;
-        font-weight: 800;
-        color: #0f172a;
-    }
-
-    .rule-editor-subtitle {
-        color: #64748b;
-        font-size: 13px;
-        margin-top: 4px;
-    }
-
-    .rule-editor-actions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-    }
-
-    .rule-rename-row {
-        margin-bottom: 12px;
-    }
-
-    .rule-rename-row input {
-        min-width: 0;
-    }
-
-    .rule-edit-table-wrap {
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-    }
-
-    .rule-edit-table {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-    }
-
-    .rule-edit-table th,
-    .rule-edit-table td {
-        padding: 10px;
-        border-bottom: 1px solid #edf2f7;
-        vertical-align: middle;
-        color: #1e293b;
-        font-size: 14px;
-    }
-
+    .rule-table-heading { padding-block: 16px; }
+    .rule-table-heading small { margin-left: 4px; font-weight: 500; }
+    .rule-edit-table-wrap { min-height: 0; flex: 1; overflow: auto; }
+    .rule-edit-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+    .rule-edit-table th, .rule-edit-table td { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; }
     .rule-edit-table th {
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        background: #f1f5f9;
-        font-weight: 800;
+        position: sticky; top: 0; z-index: 1; background: #f1f5f9;
+        font-size: 12px; color: var(--text-secondary); font-weight: 600;
     }
+    .rule-edit-table th:first-child { width: 52px; }
+    .rule-edit-table th:nth-child(4) { width: 84px; }
+    .rule-edit-table th:last-child { width: 56px; }
+    .rule-edit-table :is(th, td):first-child, .rule-edit-table :is(th, td):last-child { text-align: center; }
+    .rule-edit-table label { display: block; }
+    .rule-edit-table label span { display: none; }
+    .rule-edit-table input, .rule-row-id { font-family: ui-monospace, Consolas, monospace; }
+    .rule-row-id { color: var(--text-secondary); }
+    .rule-editor-footer { margin-top: auto; border-top: 1px solid var(--roster-line); }
+    .rule-editor-footer .btn-primary-modal { flex: none; padding-inline: 16px; }
+    .rule-editor-footer [role="status"] { color: var(--roster-accent); font-size: 13px; overflow-wrap: anywhere; }
+    .rule-manager-empty { margin: auto; padding: 28px 16px; text-align: center; color: var(--text-secondary); font-size: 14px; }
 
-    .rule-cell-input {
-        height: 36px;
-        border-radius: 7px;
+    @media (max-width: 780px) {
+        .modal-content.rule-manager-modal { width: calc(100% - 12px); height: 96vh; max-height: 96vh; margin: 2vh auto; }
+        .rule-manager-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); padding: 10px; gap: 10px; }
+        .rule-file-list { display: block; padding: 10px 14px; }
+        .rule-file-list .roster-heading { padding: 0 0 6px; border: 0; }
+        .rule-file-items { display: none; }
+        .rule-file-picker { display: block; }
+        .rule-editor-header, .rule-editor-footer, .rule-file-tools, .rule-table-heading { padding: 10px 14px; }
     }
-
-    .rule-row-delete {
-        width: 34px;
-        height: 34px;
-        border: 0;
-        border-radius: 8px;
-        background: #fee2e2;
-        color: #b91c1c;
+    @media (max-width: 540px) {
+        .rule-editor-header h3 { font-size: 17px; }
+        .rule-edit-table thead { display: none; }
+        .rule-edit-table tbody { display: block; }
+        .rule-edit-table tr {
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 62px;
+            gap: 3px 8px; align-items: center; padding: 6px 14px 12px; border-bottom: 1px solid var(--roster-line);
+        }
+        .rule-edit-table td { padding: 0; border: 0; }
+        .rule-edit-table td.rule-row-id { grid-column: 1 / 3; text-align: left; font-size: 12px; }
+        .rule-row-id::before { content: 'ID '; }
+        .rule-edit-table td.rule-row-action { grid-column: 3; grid-row: 1; text-align: right; }
+        .rule-edit-table label span { display: block; margin-bottom: 3px; font-size: 12px; color: var(--text-secondary); }
     }
-
-    .rule-manager-footer-tools {
-        margin-top: 12px;
-        min-height: 38px;
-    }
-
-    .rule-manager-message {
-        color: #0f766e;
-        font-weight: 700;
-        font-size: 13px;
-        text-align: right;
-    }
-
-    .rule-manager-empty {
-        padding: 24px 12px;
-        color: #64748b;
-        text-align: center;
-        font-weight: 700;
-    }
-
-    .rule-manager-empty.large {
-        flex: 1 1 auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
+    @media (max-height: 700px) {
+        .rule-manager-layout { flex: none; }
+        .rule-edit-table-wrap { min-height: 180px; max-height: 52vh; }
+        .rule-file-items { max-height: 58vh; }
     }
 
     .rule-builder-modal {
@@ -2155,24 +2142,9 @@
         flex-direction: column;
         overflow: hidden;
         resize: both;
-        background:
-            linear-gradient(180deg, #ffffff 0%, #f7fafc 42%, #eef4f8 100%);
+        background: var(--rule-workspace-bg);
         border: 1px solid rgba(148, 163, 184, 0.35);
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
-    }
-
-    .rule-builder-modal.fullscreen {
-        position: fixed;
-        inset: 6px;
-        width: auto;
-        height: auto;
-        min-width: 0;
-        min-height: 0;
-        max-width: none;
-        max-height: none;
-        margin: 0;
-        resize: none;
-        border-radius: 12px;
     }
 
     .rule-builder-modal .modal-header {
@@ -2195,28 +2167,10 @@
         padding: 10px 0 0;
     }
 
-    .rule-header-button {
-        width: 36px;
-        height: 36px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 0;
-        border-radius: 8px;
-        background: #eef2f7;
-        color: #334155;
-        cursor: pointer;
-    }
-
-    .rule-header-button:hover {
-        background: #dbeafe;
-        color: #1d4ed8;
-    }
-
     .rule-toolbar {
         flex: 0 0 auto;
-        display: grid;
-        grid-template-columns: minmax(260px, 1fr) 92px auto minmax(190px, auto) auto auto auto;
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         align-items: end;
         margin-bottom: 10px;
@@ -2226,6 +2180,9 @@
         border-radius: 10px;
         box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
     }
+
+    .rule-file-field { flex: 1 1 200px; }
+    .rule-score-field { width: 88px; }
 
     .rule-toolbar .form-group {
         margin-bottom: 0;
@@ -2302,7 +2259,7 @@
         flex: 1 1 auto;
         min-height: 0;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 280px;
+        grid-template-columns: minmax(0, 1fr) clamp(190px, 17vw, 260px);
         gap: 12px;
     }
 
@@ -2341,131 +2298,152 @@
     .rule-wire-underlay {
         fill: none;
         stroke: rgba(255, 255, 255, 0.9);
-        stroke-width: 8;
+        stroke-width: 6;
         stroke-linecap: round;
         stroke-linejoin: round;
     }
 
     .rule-wire-path {
         fill: none;
-        stroke: #315cff;
+        stroke: var(--wire-color);
         stroke-width: 2.6;
         stroke-linecap: round;
         stroke-linejoin: round;
-        filter: url(#ruleWireShadow);
+        filter: drop-shadow(0 2px 2px rgba(29, 78, 216, 0.22));
     }
 
     .rule-wire-terminal {
         fill: #ffffff;
-        stroke: #315cff;
+        stroke: var(--wire-color);
         stroke-width: 2;
     }
 
+    .rule-canvas-frame { container-type: inline-size; }
+
     .rule-canvas-content {
         position: relative;
-        width: max-content;
-        min-width: 720px;
-        min-height: 1px;
+        overflow: clip;
     }
 
     .rule-canvas-inner {
         position: absolute;
-        left: 0;
-        top: 0;
+        inset: 0 auto auto 0;
         transform-origin: top left;
-        width: max-content;
-        min-width: 720px;
+        width: max(740px, 100cqw);
     }
 
     .rule-canvas-scale {
         display: grid;
-        grid-template-columns: repeat(4, minmax(280px, 1fr));
-        gap: 10px;
-        min-width: 1150px;
         position: relative;
-        z-index: 2;
     }
 
+    .rule-wire-caption { pointer-events: none; }
+    .rule-wire-caption rect { fill: white; stroke: var(--wire-color); }
     .rule-score-label {
-        fill: #1d4ed8;
-        font-size: 12px;
-        font-weight: 700;
-        paint-order: stroke;
-        stroke: #ffffff;
-        stroke-width: 5px;
-        pointer-events: none;
+        fill: var(--wire-color);
+        font: 700 11px ui-monospace, monospace;
+        text-anchor: middle;
+        dominant-baseline: central;
     }
+    .rule-preview-head strong { color: var(--wire-color); }
+    .rule-duplicate-notice { color: #92400e; font-size: 13px; }
+    .rule-duplicate-notice:empty { display: none; }
 
     .rule-region {
-        position: relative;
+        --region-ink: #24577b;
         min-width: 0;
+        display: grid;
+        /* Every contact shares its row tracks with the other three regions. */
+        grid-template-rows: subgrid;
+        grid-template-columns: minmax(0, 1fr);
+        padding-inline: 8px;
+        background: #f4f7f9;
+        box-shadow: inset 0 0 0 1px #cbd6dd;
+        border-radius: 10px;
     }
+
+    .rule-region:nth-child(2) { --region-ink: #22665e; }
+    .rule-region:nth-child(3) { --region-ink: #705033; }
+    .rule-region:nth-child(4) { --region-ink: #5d4d80; }
 
     .rule-region-title {
-        position: sticky;
-        top: -12px;
-        z-index: 2;
-        padding: 7px 9px;
-        margin-bottom: 8px;
-        background: linear-gradient(135deg, #e7f5ff, #e8fbf4);
-        border: 1px solid #bfdbfe;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 13px;
-        color: #0f4c81;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+        display: grid;
+        justify-items: center;
+        align-content: center;
+        margin-inline: -8px;
+        padding: 10px 12px;
+        border-radius: 10px 10px 0 0;
+        background: var(--region-ink);
+        color: #fff;
+        font-size: 15px;
     }
 
-    .rule-component {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 5px;
-        margin-bottom: 8px;
-        padding: 8px;
-        background: rgba(255, 255, 255, 0.94);
-        border: 1px solid #d8e2ee;
-        border-radius: 10px;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.055);
+    .rule-region-title span {
+        font-size: 12px;
+        color: #ffffffdc;
+    }
+
+    .rule-component-name,
+    .rule-contact {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     }
 
     .rule-component-name {
-        grid-column: 1 / -1;
-        margin-bottom: 3px;
-        font-weight: 700;
+        align-content: center;
+        text-align: center;
+        padding: 3px 7px;
         font-size: 13px;
-        color: #26364c;
-        letter-spacing: 0;
+        font-weight: 700;
+        color: var(--region-ink);
     }
 
     .rule-contact {
-        display: block;
-        width: 100%;
-        min-height: 27px;
-        min-width: 0;
-        margin: 0;
-        padding: 5px 7px;
-        border: 1px solid #c8d6e5;
-        border-radius: 7px;
-        background: linear-gradient(180deg, #ffffff, #f7fafc);
-        color: #1e293b;
-        text-align: left;
-        font-size: 11.5px;
-        line-height: 1.25;
-        white-space: nowrap;
+        display: grid;
+        grid-template-columns: 10px minmax(0, 1fr) 10px;
+        align-items: center;
+        gap: 6px;
+        min-height: 30px;
+        padding: 4px 7px;
+        border: 0;
+        border-top: 1px solid #e6ebef;
+        background: white;
+        color: #243647;
+        font-size: 13px;
+        line-height: 1.3;
+        text-align: center;
+        overflow-wrap: anywhere;
         cursor: pointer;
-        transition: all 0.15s ease;
     }
 
-    .rule-contact-wide {
-        grid-column: 1 / -1;
+    .rule-socket {
+        position: relative;
+        width: 10px;
+        height: 10px;
+        border: 2px solid var(--region-ink);
+        border-radius: 50%;
+        background: #fff;
     }
 
-    .rule-contact:hover,
+    /* Keep connected sockets clickable above the SVG wire hit area. */
+    .rule-socket::after { content: ''; position: absolute; inset: -5px; z-index: 6; }
+
+    .rule-contact:hover { background: #eef4f8; }
+
     .rule-contact.selected {
-        border-color: #2563eb;
-        background: #eaf2ff;
-        color: #0f172a;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        background: #dceaff;
+        color: #183e79;
+        font-weight: 700;
+    }
+
+    .rule-contact.selected .rule-socket {
+        border-color: #2454b7;
+        background: #2454b7;
+        box-shadow: inset 0 0 0 1px white;
+    }
+
+    .rule-contact:focus-visible {
+        outline: 2px solid #2454b7;
+        outline-offset: -2px;
     }
 
     .rule-summary {
@@ -2497,11 +2475,17 @@
 
     .rule-preview-head {
         display: flex;
+        align-items: center;
         justify-content: space-between;
         margin-bottom: 6px;
         color: #0f172a;
     }
 
+    .rule-preview-score { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+    .rule-preview-score input {
+        width: 64px; padding: 3px 5px; text-align: center; border: 1px solid #cbd5e1;
+        border-radius: 6px; color: #1e293b; background: white;
+    }
     .rule-preview-nodes {
         color: #475569;
         font-size: 12px;
@@ -2520,36 +2504,31 @@
         .rule-builder-modal {
             min-width: 0;
             width: calc(100vw - 18px);
+            min-height: 0;
         }
 
-        .rule-toolbar,
-        .rule-builder-layout {
-            grid-template-columns: 1fr;
-        }
+        .rule-builder-modal .modal-body { overflow: auto; }
 
         .rule-builder-layout {
-            overflow: auto;
+            flex: none;
+            grid-template-columns: minmax(0, 1fr);
         }
 
-        .rule-panel,
-        .rule-summary {
-            min-height: 420px;
-        }
-
-        .rule-canvas-scale {
-            grid-template-columns: repeat(2, minmax(280px, 1fr));
-            min-width: 570px;
-        }
+        .rule-panel { height: clamp(320px, 55vh, 600px); }
+        .rule-summary { max-height: 240px; }
     }
 
     @media (max-width: 640px) {
-        .rule-canvas-scale {
-            grid-template-columns: minmax(280px, 1fr);
-            min-width: 280px;
-        }
+        .rule-builder-modal { padding: 10px; }
+        .rule-file-field { flex-basis: 55%; }
+        .rule-builder-modal .footer-info { flex-wrap: wrap; }
     }
 </style>
 
+{% include 'teaching_dialog.html' %}
+{% include 'exam_manager.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/teaching.css') }}">
+<script src="{{ url_for('static', filename='js/teaching.js') }}"></script>
 <script>
 const { createApp } = Vue;
 const RULE_CONTACT_REGIONS = [
@@ -2583,7 +2562,7 @@ const app = createApp({
             ruleServerMessage: '',
             socket: null,
             // 模态框状态
-            showCreateExamModal: false,
+            teachingMode: null,
             showViewScoresModal: false,
             showManageStudentsModal: false,
             showExamListModal: false, // 考试列表模态框状态
@@ -2609,14 +2588,6 @@ const app = createApp({
             exams: [],
             selectedExam: null, // 当前选中的考试
             examSearchQuery: '', // 考试搜索查询
-            // 考试表单数据
-            examForm: {
-                name: '',
-                description: '',
-                duration: 60,
-                startTime: '',
-                endTime: ''
-            },
             // 学生管理数据
             students: [],
             currentStudent: {
@@ -2630,11 +2601,25 @@ const app = createApp({
             isEditing: false,
             studentSortBy: 'student_id',
             studentSearchQuery: '',
+            studentPage: 1,
+            studentsPerPage: 6,
+            canManageClasses: {{ 'true' if session.get('teacher_id') else 'false' }},
+            rosterClasses: [],
+            studentClassFilter: 'all',
+            studentsLoading: false,
+            studentsError: '',
+            studentRequestId: 0,
+            studentSaving: false,
+            studentPasswordVisible: false,
+            studentNotice: '',
             // 注册审批相关数据
             showApprovalModal: false,
             registrationRequests: [],
             approvalSearchQuery: '',
-            pendingRequestsCount: 0,
+            approvalLoading: false,
+            approvalError: '',
+            approvalNotice: '',
+            approvalSubmitting: false,
             approvedRequestsCount: 0,
             rejectedRequestsCount: 0,
             lastApprovalUpdateTime: '',
@@ -2646,16 +2631,19 @@ const app = createApp({
             ruleRenameValue: '',
             ruleManagerMessage: '',
             ruleManagerLoading: false,
+            ruleFileToolsOpen: false,
+            ruleFileReady: false,
             ruleContactRefs: {},
             ruleResizeObserver: null,
             ruleCanvas: { width: 1600, height: 900 },
             ruleBuilder: {
                 filename: '',
                 selectedContact: null,
+                highlightedWireId: null,
+                notice: '',
                 currentScore: 1,
                 chainMode: false,
-                zoom: 0.82,
-                isFullscreen: false,
+                zoom: 1,
                 activeGroupId: null,
                 nextWireId: 1,
                 nextGroupId: 1,
@@ -2693,7 +2681,12 @@ const app = createApp({
             return filtered;
         },
         filteredManagedStudents() {
-            let filtered = this.students || [];
+            let filtered = this.students;
+            if (this.studentClassFilter === 'unassigned') {
+                filtered = filtered.filter(student => student.classIds.length === 0);
+            } else if (this.studentClassFilter !== 'all') {
+                filtered = filtered.filter(student => student.classIds.includes(this.studentClassFilter));
+            }
             const query = (this.studentSearchQuery || '').trim().toLowerCase();
             if (!query) {
                 return filtered;
@@ -2706,31 +2699,19 @@ const app = createApp({
                 return sno.includes(query) || name.includes(query) || userId.includes(query);
             });
         },
+        studentPageCount() {
+            return Math.max(1, Math.ceil(this.filteredManagedStudents.length / this.studentsPerPage));
+        },
+        pagedStudents() {
+            const start = (this.studentPage - 1) * this.studentsPerPage;
+            return this.filteredManagedStudents.slice(start, start + this.studentsPerPage);
+        },
         // 过滤注册请求
         filteredRequests() {
-            let filtered = this.registrationRequests;
-
-            // 搜索过滤
-            if (this.approvalSearchQuery) {
-                const query = this.approvalSearchQuery.toLowerCase();
-                filtered = filtered.filter(request =>
-                    request.user_id.toLowerCase().includes(query) ||
-                    request.user_name.toLowerCase().includes(query)
-                );
-            }
-
-            // 按用户类型排序，学生在前，教师在后
-            filtered.sort((a, b) => {
-                if (a.user_type === 'student' && b.user_type !== 'student') {
-                    return -1;
-                }
-                if (a.user_type !== 'student' && b.user_type === 'student') {
-                    return 1;
-                }
-                return 0;
-            });
-
-            return filtered;
+            const query = this.approvalSearchQuery.trim().toLowerCase();
+            return this.registrationRequests.filter(request =>
+                [request.user_id, request.user_name].some(value => String(value ?? '').toLowerCase().includes(query))
+            ).sort((a, b) => Number(b.user_type === 'student') - Number(a.user_type === 'student'));
         },
 
         // 过滤考试列表
@@ -2763,30 +2744,24 @@ const app = createApp({
                 '16/DI14', '17/DI15', '28/GND/69DI COM1/34/DI COM2'
             ]);
             return RULE_CONTACT_REGIONS.map(region => {
-                const grouped = {};
-                region.contacts.forEach(contact => {
-                    const componentName = inverterContacts.has(contact)
-                        ? 'INV'
-                        : contact.split('-')[0];
-                    if (!grouped[componentName]) {
-                        grouped[componentName] = [];
-                    }
-                    grouped[componentName].push(contact);
+                let lastGroup = '';
+                let row = 1;
+                const contacts = region.contacts.map(name => {
+                    const group = inverterContacts.has(name) ? 'INV' : name.split('-')[0];
+                    const groupTitle = group === lastGroup ? '' : group;
+                    lastGroup = group;
+                    if (groupTitle) row++;
+                    return { name, groupTitle, row: ++row };
                 });
-
-                return {
-                    ...region,
-                    components: Object.entries(grouped).map(([name, contacts]) => ({
-                        name,
-                        contacts: name === 'INV'
-                            ? contacts.slice()
-                            : contacts.slice().sort((a, b) => a.localeCompare(b, 'zh-CN'))
-                    }))
-                };
+                return { ...region, contacts, rowCount: row };
             });
         },
-        scoredRuleWires() {
-            return this.ruleBuilder.wires.filter(wire => Number(wire.score) !== 0);
+        ruleWirePlan() {
+            return planRuleWireTracks(this.ruleContactRegions, this.ruleBuilder.wires);
+        },
+        ruleWireRoutes() {
+            if (!this.showRuleBuilderModal || !this.$refs.ruleCanvasContent || !this.ruleCanvas.width) return [];
+            return this.getRuleWireRoutes(this.ruleWirePlan);
         },
         exportedRules() {
             return this.buildExportedRules();
@@ -2805,14 +2780,28 @@ const app = createApp({
             const zoom = this.ruleBuilder.zoom || 1;
             return {
                 transform: `scale(${zoom})`,
-                width: `${this.ruleCanvas.width}px`,
-                height: `${this.ruleCanvas.height}px`
+                minWidth: (704 + this.ruleWirePlan.gaps.reduce((sum, gap) => sum + gap, 0)) + 'px'
             };
         }
     },
+    watch: {
+        ruleWirePlan: {
+            flush: 'post',
+            handler() { this.scheduleRuleCanvasRefresh(); }
+        }
+    },
     methods: {
+        wireColor,
+        wireDisplayStyle(id) {
+            return {
+                '--wire-color': wireColor(id),
+                opacity: this.ruleBuilder.highlightedWireId && this.ruleBuilder.highlightedWireId !== id ? 0.22 : 1
+            };
+        },
         openRuleManagerModal() {
             this.showRuleManagerModal = true;
+            this.ruleFileToolsOpen = false;
+            this.ruleManagerMessage = '';
             this.fetchRuleFiles();
         },
         closeRuleManagerModal() {
@@ -2820,7 +2809,6 @@ const app = createApp({
         },
         fetchRuleFiles() {
             this.ruleManagerLoading = true;
-            this.ruleManagerMessage = '';
             fetch('api/rules')
                 .then(response => response.json())
                 .then(data => {
@@ -2830,6 +2818,7 @@ const app = createApp({
                     this.ruleFiles = data.files || [];
                     if (this.selectedRuleFilename && !this.ruleFiles.some(file => file.filename === this.selectedRuleFilename)) {
                         this.selectedRuleFilename = '';
+                        this.ruleFileReady = false;
                         this.selectedRuleRules = [];
                         this.ruleRenameValue = '';
                     }
@@ -2847,16 +2836,20 @@ const app = createApp({
                 });
         },
         selectRuleFile(filename) {
+            this.ruleFileToolsOpen = false;
+            this.ruleFileReady = false;
+            this.selectedRuleRules = [];
             this.selectedRuleFilename = filename;
             this.ruleRenameValue = filename;
             this.ruleManagerMessage = '';
             fetch(`api/rules/${encodeURIComponent(filename)}`)
                 .then(response => response.json())
                 .then(data => {
+                    if (this.selectedRuleFilename !== filename) return;
                     if (!data.success) {
                         throw new Error(data.message || '读取规则文件失败');
                     }
-                    this.selectedRuleFilename = data.filename;
+                    this.ruleFileReady = true;
                     this.ruleRenameValue = data.filename;
                     this.selectedRuleRules = (data.rules || []).map((rule, index) => ({
                         id: index + 1,
@@ -2868,6 +2861,7 @@ const app = createApp({
                     }));
                 })
                 .catch(error => {
+                    if (this.selectedRuleFilename !== filename) return;
                     console.error('读取规则文件失败', error);
                     this.ruleManagerMessage = error.message || '读取规则文件失败';
                 });
@@ -2884,6 +2878,7 @@ const app = createApp({
                 nodes: ['', ''],
                 score: 1
             });
+            this.$nextTick(() => this.$refs.ruleTableViewport?.querySelector('tbody tr:last-child input')?.focus());
         },
         removeManagedRule(index) {
             this.selectedRuleRules.splice(index, 1);
@@ -2934,8 +2929,8 @@ const app = createApp({
                     if (!data.success) {
                         throw new Error(data.message || '保存规则文件失败');
                     }
-                    this.ruleManagerMessage = data.message;
                     this.selectRuleFile(data.filename);
+                    this.ruleManagerMessage = data.message;
                     this.fetchRuleFiles();
                 })
                 .catch(error => {
@@ -3014,22 +3009,23 @@ const app = createApp({
                 });
         },
         openRuleBuilderModal() {
+            this.$refs.ruleMethodDialog.close();
             this.showRuleBuilderModal = true;
             if (!this.ruleBuilder.filename) {
                 this.ruleBuilder.filename = `接线规则_${new Date().toISOString().slice(0, 10)}`;
             }
             this.$nextTick(() => {
+                this.$refs.ruleBuilderClose.focus();
                 this.setupRuleCanvasObserver();
                 this.refreshRuleCanvas();
             });
         },
         closeRuleBuilderModal() {
             this.showRuleBuilderModal = false;
+            this.$nextTick(() => this.$refs.ruleBuilderCard.focus());
+            this.ruleBuilder.notice = '';
+            this.ruleBuilder.highlightedWireId = null;
             this.ruleBuilder.selectedContact = null;
-        },
-        toggleRuleBuilderFullscreen() {
-            this.ruleBuilder.isFullscreen = !this.ruleBuilder.isFullscreen;
-            this.$nextTick(this.refreshRuleCanvas);
         },
         setRuleContactRef(contact, el) {
             if (el) {
@@ -3072,50 +3068,80 @@ const app = createApp({
             this.scheduleRuleCanvasRefresh();
         },
         resetRuleZoom() {
-            this.ruleBuilder.zoom = 0.82;
+            this.ruleBuilder.zoom = 1;
             this.scheduleRuleCanvasRefresh();
         },
-        getRuleContactAnchor(contact) {
-            const content = this.$refs.ruleCanvasContent;
-            const el = this.ruleContactRefs[contact];
-            if (!content || !el) {
-                return { x: 0, y: 0 };
+        updateWireScore(wire, input) {
+            if (input.validity.valid && Number.isSafeInteger(input.valueAsNumber)) {
+                wire.score = input.valueAsNumber;
             }
-            const zoom = Number(this.ruleBuilder.zoom || 1);
-            const contentRect = content.getBoundingClientRect();
-            const rect = el.getBoundingClientRect();
-            return {
-                x: (rect.left - contentRect.left + rect.width / 2) / zoom,
-                y: (rect.top - contentRect.top + 1) / zoom
-            };
         },
-        getRuleWirePath(wire) {
-            const start = this.getRuleContactAnchor(wire.start);
-            const end = this.getRuleContactAnchor(wire.end);
-            const horizontalDistance = Math.abs(end.x - start.x);
-            const verticalDistance = Math.abs(end.y - start.y);
-            const lift = Math.min(84, Math.max(24, horizontalDistance * 0.05 + verticalDistance * 0.03));
-            const controlY = Math.max(8, Math.min(start.y, end.y) - lift);
-            return `M ${start.x} ${start.y} C ${start.x} ${controlY}, ${end.x} ${controlY}, ${end.x} ${end.y}`;
-        },
-        getRuleWireLabelPoint(wire) {
-            const start = this.getRuleContactAnchor(wire.start);
-            const end = this.getRuleContactAnchor(wire.end);
-            const horizontalDistance = Math.abs(end.x - start.x);
-            const verticalDistance = Math.abs(end.y - start.y);
-            const lift = Math.min(84, Math.max(24, horizontalDistance * 0.05 + verticalDistance * 0.03));
-            return {
-                x: (start.x + end.x) / 2,
-                y: Math.max(10, Math.min(start.y, end.y) - lift - 4)
+        getRuleWireRoutes(plan) {
+            const origin = this.$refs.ruleCanvasContent.getBoundingClientRect();
+            const zoom = this.ruleBuilder.zoom;
+            const regions = [...this.$refs.ruleCanvasScale.children];
+            const trackX = (gap, track) => {
+                const right = (regions[gap].getBoundingClientRect().left - origin.left) / zoom;
+                return right - plan.gaps[gap] + 9 + track * WIRE_TRACK_GAP;
             };
+            const anchor = (button, right) => {
+                const socket = right ? button.lastElementChild : button.firstElementChild;
+                const rect = socket.getBoundingClientRect();
+                return { x: (rect.left + rect.width / 2 - origin.left) / zoom,
+                         y: (rect.top + rect.height / 2 - origin.top) / zoom };
+            };
+            const routes = plan.routes.map(route => {
+                const { wire } = route;
+                const from = this.ruleContactRefs[wire.start];
+                const to = this.ruleContactRefs[wire.end];
+                const start = anchor(from, route.startRight);
+                const end = anchor(to, route.endRight);
+                const startY = start.y + route.startOffset;
+                const endY = end.y + route.endOffset;
+                const points = [start];
+                if (route.startOffset) {
+                    const x = start.x + (route.startRight ? 6 : -6);
+                    points.push({ x, y: start.y }, { x, y: startY });
+                }
+                if (route.firstTrack !== undefined) {
+                    const x = trackX(route.firstGap, route.firstTrack);
+                    points.push({ x, y: startY });
+                    if (route.crossRow !== undefined) {
+                        const top = Math.min(from.getBoundingClientRect().top, to.getBoundingClientRect().top);
+                        const y = (top - origin.top) / zoom - 8 - route.crossTrack * WIRE_TRACK_GAP;
+                        const endX = trackX(route.lastGap, route.lastTrack);
+                        points.push({ x, y }, { x: endX, y }, { x: endX, y: endY });
+                    } else {
+                        points.push({ x, y: endY });
+                    }
+                } else if (Math.abs(startY - endY) > 0.01) {
+                    const x = (start.x + end.x) / 2;
+                    points.push({ x, y: startY }, { x, y: endY });
+                }
+                if (route.endOffset) {
+                    const x = end.x + (route.endRight ? 6 : -6);
+                    points.push({ x, y: endY }, { x, y: end.y });
+                }
+                points.push(end);
+                const path = points.map((p, i) => (i ? 'L' : 'M') + p.x + ' ' + p.y).join(' ');
+                return {
+                    id: wire.id, score: Number(wire.score), description: wire.start + ' ↔ ' + wire.end,
+                    points, path, start, end
+                };
+            });
+            placeRuleWireLabels(routes, this.ruleCanvas.width);
+            return routes;
         },
         selectRuleWire(wireId) {
             if (confirm('删除这条连线吗？')) {
+                this.ruleBuilder.notice = '';
+                this.ruleBuilder.highlightedWireId = null;
                 this.ruleBuilder.wires = this.ruleBuilder.wires.filter(wire => wire.id !== wireId);
             }
         },
         handleRuleContactClick(contact) {
             this.refreshRuleCanvas();
+            this.ruleBuilder.notice = '';
             if (!this.ruleBuilder.selectedContact) {
                 this.ruleBuilder.selectedContact = contact;
                 if (!this.ruleBuilder.activeGroupId) {
@@ -3129,6 +3155,16 @@ const app = createApp({
                 return;
             }
 
+            const start = this.ruleBuilder.selectedContact;
+            const existing = this.ruleBuilder.wires.findIndex(wire =>
+                (wire.start === start && wire.end === contact) || (wire.start === contact && wire.end === start)
+            );
+            if (existing >= 0) {
+                this.ruleBuilder.notice = `已有重复连线：${start} ↔ ${contact}（规则 #${existing + 1}），已忽略。`;
+                this.ruleBuilder.selectedContact = this.ruleBuilder.chainMode ? contact : null;
+                if (!this.ruleBuilder.chainMode) this.ruleBuilder.activeGroupId = null;
+                return;
+            }
             const groupId = this.ruleBuilder.activeGroupId || this.ruleBuilder.nextGroupId++;
             this.ruleBuilder.wires.push({
                 id: this.ruleBuilder.nextWireId++,
@@ -3156,6 +3192,8 @@ const app = createApp({
             this.ruleBuilder.activeGroupId = null;
         },
         undoRuleWire() {
+            this.ruleBuilder.notice = '';
+            this.ruleBuilder.highlightedWireId = null;
             this.ruleBuilder.wires.pop();
             this.ruleBuilder.selectedContact = null;
             this.ruleBuilder.activeGroupId = null;
@@ -3165,6 +3203,8 @@ const app = createApp({
                 this.ruleBuilder.selectedContact = null;
                 this.ruleBuilder.activeGroupId = null;
                 this.ruleBuilder.wires = [];
+                this.ruleBuilder.notice = '';
+                this.ruleBuilder.highlightedWireId = null;
             }
         },
         buildExportedRules() {
@@ -3205,78 +3245,6 @@ const app = createApp({
                 console.error('保存规则文件失败', error);
                 alert('保存规则文件失败，请重试');
             });
-        },
-        // 修改方法名以避免与data属性冲突
-        openCreateExamModal() {
-            // 显示新增考试模态框
-            this.showCreateExamModal = true;
-            // 初始化表单数据
-            const now = new Date();
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            this.examForm = {
-                test_name: '',
-                test_type: '',
-                duration_minutes: 60,
-                publish_time: this.formatDateTime(now),
-                deadline_time: this.formatDateTime(tomorrow)
-            };
-        },
-        closeCreateExamModal() {
-            // 关闭新增考试模态框
-            this.showCreateExamModal = false;
-            // 重置表单数据
-            this.examForm = {
-                test_name: '',
-                test_type: '',
-                duration_minutes: 60,
-                publish_time: this.formatDateTime(new Date()),
-                deadline_time: this.formatDateTime(new Date(Date.now() + 60 * 60 * 1000))
-            };
-        },
-        submitCreateExam() {
-            // 提交新增考试表单
-            if (!this.examForm.test_name) {
-                alert('请输入考试名称');
-                return;
-            }
-
-            if (!this.examForm.test_type) {
-                alert('请输入考试类型');
-                return;
-            }
-
-            // 发送创建考试请求到后端
-            fetch('api/create_exam', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(this.examForm)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('考试创建成功！考试ID: ' + data.exam_id);
-                    this.closeCreateExamModal();
-                    this.fetchExams();
-                } else {
-                    alert('考试创建失败: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('创建考试失败', error);
-                alert('创建考试失败，请重试');
-            });
-        },
-        formatDateTime(date) {
-            // 格式化日期时间用于datetime-local输入框
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            return `${year}-${month}-${day}T${hours}:${minutes}`;
         },
         openViewScoresModal() {
             this.showViewScoresModal = true;
@@ -3455,32 +3423,54 @@ const app = createApp({
         },
         openManageStudentsModal() {
             this.showManageStudentsModal = true;
+            this.studentNotice = '';
             this.cancelEdit();
             this.fetchStudents();
         },
         closeManageStudentsModal() {
-            this.showManageStudentsModal = false;
+            if (!this.studentSaving) this.showManageStudentsModal = false;
         },
-        fetchStudents() {
-            fetch(`api/students?sort_by=${encodeURIComponent(this.studentSortBy)}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (!data.success && data.message) {
-                        alert(data.message);
-                        return;
-                    }
-                    this.students = data.students || [];
-                })
-                .catch(error => {
-                    console.error('获取学生列表失败', error);
-                    alert('获取学生列表失败，请检查数据库连接');
-                });
+        async fetchStudents() {
+            const requestId = ++this.studentRequestId;
+            this.studentsLoading = true;
+            this.studentsError = '';
+            try {
+                const getData = async url => {
+                    const response = await fetch(url, { cache: 'no-store' });
+                    const data = await response.json();
+                    if (!response.ok || !data.success) throw new Error(data.message || '学生名册加载失败');
+                    return data;
+                };
+                const [roster, classes] = await Promise.all([
+                    getData(`api/students?sort_by=${encodeURIComponent(this.studentSortBy)}`),
+                    this.canManageClasses ? getData('api/classes?memberships=1') : { classes: [], memberships: [] }
+                ]);
+                if (requestId !== this.studentRequestId) return;
+                const byStudent = new Map();
+                for (const membership of classes.memberships) {
+                    const sno = String(membership.student_no);
+                    if (!byStudent.has(sno)) byStudent.set(sno, []);
+                    byStudent.get(sno).push(membership.class_id);
+                }
+                this.rosterClasses = classes.classes;
+                if (typeof this.studentClassFilter === 'number' && !this.rosterClasses.some(c => c.id === this.studentClassFilter)) {
+                    this.studentClassFilter = 'all';
+                }
+                this.students = roster.students.map(student => ({ ...student, classIds: byStudent.get(String(student.sno)) || [] }));
+                this.studentPage = Math.min(this.studentPage, this.studentPageCount);
+            } catch (error) {
+                if (requestId === this.studentRequestId) this.studentsError = error.message || '学生名册加载失败';
+            } finally {
+                if (requestId === this.studentRequestId) this.studentsLoading = false;
+            }
         },
-        sortStudents() {
-            this.fetchStudents();
+        classNames(ids) {
+            return this.rosterClasses.filter(group => ids.includes(group.id)).map(group => group.name).join('、') || '未分班';
         },
         editStudent(student) {
             this.currentStudent = {
+                classIds: student.classIds,
+                classChoice: student.classIds.length > 1 ? 'multiple' : student.classIds.join(''),
                 id: student.user_id || student.id,
                 user_id: student.user_id || student.id,
                 sno: student.sno || student.student_id || '',
@@ -3488,10 +3478,14 @@ const app = createApp({
                 name: student.name || '',
                 student_password: student.student_password || student.password || ''
             };
+            this.studentNotice = '';
+            this.studentPasswordVisible = false;
             this.isEditing = true;
+            this.$nextTick(() => this.$refs.studentNumber.focus());
         },
-        deleteStudent(studentId) {
-            if (confirm('确定要删除这个学生吗？')) {
+        deleteStudent(student) {
+            const studentId = student.user_id || student.id;
+            if (confirm(`确定删除 ${student.name}（${student.sno || student.student_id}）及其登录账号吗？`)) {
                 fetch(`api/student/${studentId}`, { method: 'DELETE' })
                     .then(response => response.json().then(data => ({ ok: response.ok, data })))
                     .then(({ ok, data }) => {
@@ -3502,6 +3496,7 @@ const app = createApp({
                         if (this.isEditing && (this.currentStudent.user_id || this.currentStudent.id) === studentId) {
                             this.cancelEdit();
                         }
+                        this.studentNotice = data.message || '已删除学生';
                         this.fetchStudents();
                     })
                     .catch(error => {
@@ -3511,6 +3506,7 @@ const app = createApp({
             }
         },
         saveStudent() {
+            if (this.studentSaving) return;
             if (!this.currentStudent.sno || !this.currentStudent.name || !this.currentStudent.student_password) {
                 alert('请填写完整的学号、姓名和密码');
                 return;
@@ -3521,10 +3517,18 @@ const app = createApp({
                 name: String(this.currentStudent.name).trim(),
                 student_password: String(this.currentStudent.student_password).trim()
             };
+            if (this.isEditing && this.canManageClasses) {
+                const { classChoice, classIds } = this.currentStudent;
+                if (classChoice !== 'multiple' && classChoice !== classIds.join(',')) {
+                    payload.class_id = classChoice === '' ? null : Number(classChoice);
+                }
+            }
             const url = this.isEditing
                 ? `api/student/${this.currentStudent.user_id || this.currentStudent.id}`
                 : 'api/student';
             const method = this.isEditing ? 'PUT' : 'POST';
+            this.studentSaving = true;
+            this.studentNotice = '';
 
             fetch(url, {
                 method,
@@ -3534,17 +3538,18 @@ const app = createApp({
                 .then(response => response.json().then(data => ({ ok: response.ok, data })))
                 .then(({ ok, data }) => {
                     if (!ok || !data.success) {
-                        alert(data.message || '保存学生失败');
+                        this.studentNotice = data.message || '保存学生失败';
                         return;
                     }
-                    alert(data.message || '保存成功');
+                    this.studentNotice = data.message || '保存成功';
                     this.cancelEdit();
                     this.fetchStudents();
                 })
                 .catch(error => {
                     console.error('保存学生失败', error);
-                    alert('保存学生失败，请重试');
-                });
+                    this.studentNotice = '保存学生失败，请重试';
+                })
+                .finally(() => { this.studentSaving = false; });
         },
         cancelEdit() {
             this.currentStudent = {
@@ -3556,6 +3561,7 @@ const app = createApp({
                 student_password: ''
             };
             this.isEditing = false;
+            this.studentPasswordVisible = false;
         },
         toggleRuleServer() {
             const url = this.ruleServerStatus === 'stopped'
@@ -3568,6 +3574,11 @@ const app = createApp({
             });
         },
         fetchTeacherInfo() {
+            const signedIn = {{ (dict(tno=session.teacher_id, teacher_name=session.teacher_name) if session.get('teacher_id') and session.get('teacher_name') else none)|tojson }};
+            if (signedIn) {
+                this.teacherInfo = signedIn;
+                return;
+            }
             try {
                 // 首先尝试从URL参数中获取教师信息
                 const urlParams = new URLSearchParams(window.location.search);
@@ -3720,94 +3731,61 @@ const app = createApp({
         closeApprovalModal() {
             this.showApprovalModal = false;
         },
-        refreshRegistrationRequests() {
-            this.fetchRegistrationRequests();
-        },
-        fetchRegistrationRequests() {
-            fetch('api/registration_requests')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        this.registrationRequests = data.requests;
-                        this.pendingRequestsCount = data.total;
-                        this.updateApprovalUpdateTime();
-                    } else {
-                        alert('获取注册请求失败: ' + data.message);
-                        console.error('获取注册请求失败:', data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('获取注册请求失败', error);
-                    alert('获取注册请求失败，请检查网络连接后重试');
-                });
-        },
-        approveRequest(userId) {
-            if (confirm(`确定要批准用户ID为 ${userId} 的注册请求吗？`)) {
-                fetch('api/approve_registration', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ user_id: userId })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('注册请求已成功批准！');
-                        // 从列表中移除已批准的请求
-                        this.registrationRequests = this.registrationRequests.filter(
-                            request => request.user_id !== userId
-                        );
-                        this.pendingRequestsCount = this.registrationRequests.length;
-                        this.approvedRequestsCount++;
-                    } else {
-                        alert('批准注册请求失败: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('批准注册请求失败', error);
-                    alert('批准注册请求失败，请重试');
-                });
+        async fetchRegistrationRequests() {
+            if (this.approvalLoading || this.approvalSubmitting) return;
+            this.approvalLoading = true;
+            this.approvalError = '';
+            this.approvalNotice = '';
+            try {
+                const response = await fetch('api/registration_requests');
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || '获取注册申请失败');
+                this.registrationRequests = data.requests;
+                this.lastApprovalUpdateTime = new Date().toLocaleString('zh-CN');
+            } catch (error) {
+                this.approvalError = error.message || '获取注册申请失败，请重试';
+            } finally {
+                this.approvalLoading = false;
             }
         },
-        rejectRequest(userId) {
-            const reason = prompt('请输入拒绝该注册请求的原因:', '');
-            if (reason !== null) {
-                fetch('api/reject_registration', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        user_id: userId,
-                        reason: reason || '未提供拒绝理由'
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('注册请求已拒绝！');
-                        // 从列表中移除已拒绝的请求
-                        this.registrationRequests = this.registrationRequests.filter(
-                            request => request.user_id !== userId
-                        );
-                        this.pendingRequestsCount = this.registrationRequests.length;
-                        this.rejectedRequestsCount++;
-                    } else {
-                        alert('拒绝注册请求失败: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('拒绝注册请求失败', error);
-                    alert('拒绝注册请求失败，请重试');
-                });
+        async reviewRegistration(request, approve) {
+            if (this.approvalSubmitting || this.approvalLoading) return;
+            const applicant = `${request.user_name}（${request.user_id}）`;
+            const payload = { user_id: request.user_id };
+            if (approve) {
+                if (!confirm(`确定批准 ${applicant} 的注册申请吗？`)) return;
+            } else {
+                const reason = prompt(`请输入拒绝 ${applicant} 的原因`, '');
+                if (reason === null) return;
+                payload.reason = reason || '未提供拒绝理由';
             }
-        },
-        updateApprovalUpdateTime() {
-            this.lastApprovalUpdateTime = new Date().toLocaleString('zh-CN');
+            this.approvalSubmitting = true;
+            this.approvalNotice = '';
+            try {
+                const url = approve ? 'api/approve_registration' : 'api/reject_registration';
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || '审批失败，请重试');
+                this.registrationRequests = this.registrationRequests.filter(item => item.user_id !== request.user_id);
+                if (approve) this.approvedRequestsCount++;
+                else this.rejectedRequestsCount++;
+                this.approvalNotice = `已${approve ? '批准' : '拒绝'} ${applicant} 的注册申请`;
+                this.lastApprovalUpdateTime = new Date().toLocaleString('zh-CN');
+            } catch (error) {
+                this.approvalNotice = error.message || '审批失败，请重试';
+            } finally {
+                this.approvalSubmitting = false;
+            }
         }
     },
     mounted() {
+        if (this.canManageClasses && new URLSearchParams(location.search).get('panel') === 'students') {
+            this.openManageStudentsModal();
+        }
         this.fetchTeacherInfo();
         this.setupSocket();
         window.addEventListener('resize', this.refreshRuleCanvas);
@@ -3824,6 +3802,8 @@ const app = createApp({
         }
     }
 });
+app.component('teaching-dialog', TeachingDialog);
+app.component('exam-manager', ExamManager);
 app.mount('#app');
 </script>
 

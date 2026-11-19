@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, session
 import os
 from flask_socketio import SocketIO, emit
 import json
@@ -12,7 +12,11 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 
 # 导入数据库连接器
-from tools.config import DB_CONFIG, RULE_SERVER_CONFIG, TEACHER_WEB_CONFIG
+from tools.config import DB_CONFIG, RULE_SERVER_CONFIG, TEACHER_WEB_CONFIG, STUDENT_WEB_CONFIG
+from contextlib import closing
+from mysql.connector import Error, IntegrityError
+from db import MySQLConnector as RosterDatabase
+from teacher_webui.teaching import FormError, set_student_class, teaching_routes
 
 try:
     from tools.connector import MySQLConnector
@@ -116,7 +120,7 @@ def get_config_module():
 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = TEACHER_WEB_CONFIG["secret_key"]
+app.config.update(SECRET_KEY=STUDENT_WEB_CONFIG["secret_key"], SESSION_COOKIE_NAME="circuit_entry")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # 全局变量
@@ -250,6 +254,9 @@ def read_rule_file(filename):
         raise FileNotFoundError(f'规则文件不存在：{safe_name}')
     with open(file_path, 'r', encoding='utf-8') as f:
         return safe_name, json.load(f)
+
+
+app.register_blueprint(teaching_routes(read_rule_file, validate_rule_payload))
 
 
 def db_error_response(default_message='数据库操作失败'):
@@ -527,15 +534,14 @@ def get_students():
     }
     order_column = sort_columns.get(sort_by, 's.sno')
 
-    rows = db_connector.query(f"""
-        SELECT s.sno, s.name, s.user_id, s.student_password,
-               u.user_no, u.password, u.role
-        FROM student s
-        LEFT JOIN users u ON s.user_id = u.user_id
-        ORDER BY {order_column}
-    """)
-    if getattr(db_connector, 'last_error', None):
-        return db_error_response('读取学生列表失败')
+    try:
+        with closing(RosterDatabase()) as db:
+            rows = db.query(f"""
+                SELECT s.sno, s.name, s.user_id, s.student_password, u.user_no, u.password, u.role
+                FROM student s LEFT JOIN users u ON s.user_id = u.user_id ORDER BY {order_column}
+            """)
+    except RuntimeError:
+        return jsonify(success=False, message='读取学生列表失败'), 503
 
     students = []
     for row in rows:
@@ -884,38 +890,32 @@ def edit_student(student_id):
     if not sno_new or not name or not password:
         return jsonify({'success': False, 'message': '学号、姓名和密码不能为空'}), 400
 
-    existing = db_connector.query("SELECT sno FROM student WHERE user_id = %s", (student_id,))
-    if getattr(db_connector, 'last_error', None):
-        return db_error_response('查询学生失败')
-    if not existing:
-        return jsonify({'success': False, 'message': '学生不存在'}), 404
-
-    duplicate_student = db_connector.query(
-        "SELECT user_id FROM student WHERE sno = %s AND user_id <> %s",
-        (sno_new, student_id)
-    )
-    if getattr(db_connector, 'last_error', None):
-        return db_error_response('检查学生学号失败')
-    duplicate_user = db_connector.query(
-        "SELECT user_id FROM users WHERE user_no = %s AND user_id <> %s",
-        (sno_new, student_id)
-    )
-    if getattr(db_connector, 'last_error', None):
-        return db_error_response('检查登录账号失败')
-    if duplicate_student or duplicate_user:
-        return jsonify({'success': False, 'message': '学号已存在'}), 400
-
-    if not db_connector.execute(
-        "UPDATE users SET user_no = %s, password = %s, role = %s WHERE user_id = %s AND role = %s",
-        (sno_new, password, 'student', student_id, 'student')
-    ):
-        return db_error_response('更新学生登录账号失败')
-
-    if not db_connector.execute(
-        "UPDATE student SET sno = %s, name = %s, student_password = %s WHERE user_id = %s",
-        (sno_new, name, password, student_id)
-    ):
-        return db_error_response('更新学生目录失败')
+    try:
+        with closing(RosterDatabase()) as db:
+            db.connect()
+            with db.connection.cursor() as cur:
+                cur.execute("SELECT sno FROM student WHERE user_id=%s FOR UPDATE", (student_id,))
+                if not cur.fetchone():
+                    raise FormError('学生不存在', 404)
+                cur.execute("SELECT user_id FROM users WHERE user_no=%s AND user_id<>%s LIMIT 1",
+                            (sno_new, student_id))
+                if cur.fetchone():
+                    raise FormError('学号已存在')
+                cur.execute("UPDATE users SET user_no=%s,password=%s WHERE user_id=%s AND role='student'",
+                            (sno_new, password, student_id))
+                cur.execute("UPDATE student SET sno=%s,name=%s,student_password=%s WHERE user_id=%s",
+                            (sno_new, name, password, student_id))
+                if 'class_id' in data:
+                    set_student_class(cur, sno_new, data['class_id'])
+                db.connection.commit()
+    except FormError as exc:
+        return jsonify(success=False, message=str(exc)), exc.status
+    except IntegrityError as exc:
+        message = '学号已存在' if exc.errno == 1062 else '学生或班级信息已变更，请刷新后重试'
+        return jsonify(success=False, message=message), 409
+    except Error:
+        app.logger.exception('保存学生信息失败')
+        return jsonify(success=False, message='保存学生信息失败'), 503
 
     return jsonify({'success': True, 'message': '学生信息更新成功', 'student': {
         'id': student_id,
@@ -938,17 +938,6 @@ def format_db_datetime(value):
     return str(value)
 
 
-def normalize_datetime_input(value):
-    value = str(value or '').strip()
-    if not value:
-        return value
-    if 'T' in value:
-        value = value.replace('T', ' ')
-    if len(value) == 16:
-        value += ':00'
-    return value
-
-
 def parse_score_value(value):
     try:
         return float(value)
@@ -961,20 +950,6 @@ def split_knowledge_points(value):
         return []
     text = str(value).replace('\uff0c', ',').replace('\u3001', ',').replace(';', ',').replace('\uff1b', ',')
     return [item.strip() for item in text.split(',') if item.strip()]
-
-
-def get_effective_teacher_id():
-    config = get_config_module()
-    teacher_id = str(getattr(config['Login_Session'], 'tno', '') or '').strip()
-    if teacher_id:
-        rows = db_connector.query('SELECT tno FROM teacher WHERE tno = %s LIMIT 1', (teacher_id,))
-        if rows:
-            return teacher_id
-
-    rows = db_connector.query('SELECT tno FROM teacher ORDER BY tno LIMIT 1')
-    if rows:
-        return str(rows[0][0])
-    return teacher_id
 
 
 @app.route('/api/student_score/<sno>', methods=['GET'])
@@ -1117,67 +1092,16 @@ def get_weak_knowledge_points():
 
 
 
-@app.route('/api/create_exam', methods=['POST'])
-def create_exam():
-    """Create a new exam in exam_test."""
-    try:
-        if not DB_AVAILABLE or db_connector is None:
-            return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
-
-        data = request.get_json(silent=True) or {}
-        required_fields = ['test_name', 'test_type', 'duration_minutes', 'publish_time', 'deadline_time']
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({'success': False, 'message': f'{field} is required'}), 400
-
-        try:
-            duration_minutes = int(data['duration_minutes'])
-        except (TypeError, ValueError):
-            return jsonify({'success': False, 'message': 'duration_minutes must be an integer'}), 400
-        if duration_minutes <= 0:
-            return jsonify({'success': False, 'message': 'duration_minutes must be greater than 0'}), 400
-
-        teacher_id = get_effective_teacher_id()
-        if not teacher_id:
-            return jsonify({'success': False, 'message': 'No teacher account is available'}), 400
-
-        publish_time = normalize_datetime_input(data['publish_time'])
-        deadline_time = normalize_datetime_input(data['deadline_time'])
-
-        success = db_connector.execute(
-            """
-            INSERT INTO exam_test (test_name, test_type, duration_minutes, publish_time, deadline_time, teacher_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (data['test_name'].strip(), data['test_type'].strip(), duration_minutes, publish_time, deadline_time, teacher_id)
-        )
-        if not success:
-            return db_error_response('Failed to create exam')
-
-        rows = db_connector.query('SELECT LAST_INSERT_ID()')
-        exam_id = rows[0][0] if rows else None
-        if not exam_id:
-            rows = db_connector.query(
-                'SELECT test_id FROM exam_test WHERE teacher_id = %s ORDER BY test_id DESC LIMIT 1',
-                (teacher_id,)
-            )
-            exam_id = rows[0][0] if rows else None
-        if not exam_id:
-            return db_error_response('Failed to get exam ID')
-
-        return jsonify({'success': True, 'exam_id': exam_id, 'message': 'Exam created successfully'})
-    except Exception as exc:
-        return jsonify({'success': False, 'message': f'Failed to create exam: {exc}'}), 500
-
-
 @app.route('/api/get_exams', methods=['GET'])
 def get_exams():
     """Get exam list from exam_test."""
+    teacher_id = session.get('teacher_id')
+    if not teacher_id:
+        return jsonify(success=False, message='请先登录教师账号'), 401
     try:
         if not DB_AVAILABLE or db_connector is None:
             return jsonify({'success': False, 'message': 'Database connection unavailable'}), 500
 
-        teacher_id = get_effective_teacher_id()
         teacher_info = None
         if teacher_id:
             teacher_rows = db_connector.query('SELECT tno, name FROM teacher WHERE tno = %s LIMIT 1', (teacher_id,))
@@ -1185,14 +1109,15 @@ def get_exams():
                 teacher_info = {'tno': str(teacher_rows[0][0]), 'teacher_name': teacher_rows[0][1]}
 
         sql = """
-            SELECT e.test_id, e.test_name, e.test_type, e.duration_minutes,
+            SELECT e.id, e.test_name, e.test_type, e.duration_minutes,
                    e.publish_time, e.deadline_time, e.create_time, e.update_time,
                    e.teacher_id, t.name
             FROM exam_test e
             LEFT JOIN teacher t ON CAST(e.teacher_id AS UNSIGNED) = t.tno
-            ORDER BY e.publish_time DESC, e.test_id DESC
+            WHERE e.issuer_tno = %s
+            ORDER BY e.publish_time DESC, e.id DESC
         """
-        rows = db_connector.query(sql)
+        rows = db_connector.query(sql, (teacher_id,))
         if getattr(db_connector, 'last_error', None):
             return db_error_response('Failed to load exams')
 
