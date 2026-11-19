@@ -823,7 +823,9 @@
                         <button type="button" class="rule-icon-button" @click="zoomRulePanel(-0.1)" title="缩小">
                             <i class="bi bi-zoom-out"></i>
                         </button>
-                        <input type="range" min="0.65" max="1.35" step="0.05" v-model.number="ruleBuilder.zoom">
+                        <input type="range" min="0.65" max="1.35" step="0.05"
+                               v-model.number="ruleBuilder.zoom"
+                               @input="scheduleRuleCanvasRefresh">
                         <button type="button" class="rule-icon-button" @click="zoomRulePanel(0.1)" title="放大">
                             <i class="bi bi-zoom-in"></i>
                         </button>
@@ -874,7 +876,11 @@
                                                     :key="contact"
                                                     :ref="el => setRuleContactRef(contact, el)"
                                                     class="rule-contact"
-                                                    :class="{selected: ruleBuilder.selectedContact === contact}"
+                                                    :class="{
+                                                        selected: ruleBuilder.selectedContact === contact,
+                                                        'rule-contact-wide': contact.length > 18
+                                                    }"
+                                                    :title="contact"
                                                     @click="handleRuleContactClick(contact)">
                                                 {{ contact }}
                                             </button>
@@ -2373,9 +2379,9 @@
 
     .rule-canvas-scale {
         display: grid;
-        grid-template-columns: repeat(4, minmax(156px, 1fr));
+        grid-template-columns: repeat(4, minmax(280px, 1fr));
         gap: 10px;
-        min-width: 720px;
+        min-width: 1150px;
         position: relative;
         z-index: 2;
     }
@@ -2435,6 +2441,7 @@
         display: block;
         width: 100%;
         min-height: 27px;
+        min-width: 0;
         margin: 0;
         padding: 5px 7px;
         border: 1px solid #c8d6e5;
@@ -2444,8 +2451,13 @@
         text-align: left;
         font-size: 11.5px;
         line-height: 1.25;
+        white-space: nowrap;
         cursor: pointer;
         transition: all 0.15s ease;
+    }
+
+    .rule-contact-wide {
+        grid-column: 1 / -1;
     }
 
     .rule-contact:hover,
@@ -2525,14 +2537,15 @@
         }
 
         .rule-canvas-scale {
-            grid-template-columns: repeat(2, minmax(210px, 1fr));
-            min-width: 0;
+            grid-template-columns: repeat(2, minmax(280px, 1fr));
+            min-width: 570px;
         }
     }
 
     @media (max-width: 640px) {
         .rule-canvas-scale {
-            grid-template-columns: 1fr;
+            grid-template-columns: minmax(280px, 1fr);
+            min-width: 280px;
         }
     }
 </style>
@@ -2543,22 +2556,22 @@ const RULE_CONTACT_REGIONS = [
     {
         name: 'region_001',
         title: '区域一',
-        contacts: ['QS1-1','QS1-3','QS1-5','QS1-7','FU1-1','FU1-3','FU1-5','FU2-1','FU2-3','FU2-5','KT1-A1','KT1-1L1','KT1-3L2','KT1-5L3','KT1-55','KT1-67','KT2-A1','KT2-1L1','KT2-3L2','KT2-5L3','KT2-55','KT2-67','PLC-L','PLC-N','PLC-PE','PLC-L+','PLC-M','PLC-1M','PLC-X0','PLC-X1','PLC-X2','PLC-X3','PLC-X4','PLC-X5','PLC-X6','PLC-X7']
+        contacts: ['QS1-1','QS1-3','QS1-5','QS1-7','FU1-1','FU1-3','FU1-5','FU2-1','FU2-3','KT1-A1','KT1-1/L1','KT1-3/L2','KT1-5/L3','KT1-55/NC','KT1-67/NO','KT2-A1','KT2-1/L1','KT2-3/L2','KT2-5/L3','KT2-55/NC','KT2-67/NO','PLC-L','PLC-N','PLC-PE','PLC-L+','PLC-M','PLC-1M','PLC-I0.0','PLC-I0.1','PLC-I0.2','PLC-I0.3','PLC-I0.4','PLC-I0.5','PLC-I0.6','PLC-I0.7']
     },
     {
         name: 'region_002',
         title: '区域二',
-        contacts: ['QS1-2','QS1-4','QS1-6','QS1-8','FU1-2','FU1-4','FU1-6','FU2-2','FU2-4','FU2-6','KT1-A2','KT1-2TA','KT1-4T2','KT1-6T3','KT1-56','KT1-68','KT2-A2','KT2-2T1','KT2-4T2','KT2-6T3','KT2-56','KT2-68','PLC-1L','PLC-Y0','PLC-Y1','PLC-Y2','PLC-Y3','PLC-Y4','PLC-2L','PLC-Y5','PLC-Y6','PLC-Y7','INV-L1','INV-L2','INV-L3','INV-5/DI0','INV-6/DI1','INV-7/DI2','INV-8/DI3','INV-16/DI4','INV-17/DI5','INV-DO0','INV-U2','INV-V2','INV-W2']
+        contacts: ['QS1-2','QS1-4','QS1-6','QS1-8','FU1-2','FU1-4','FU1-6','FU2-2','FU2-4','KT1-A2','KT1-2/T1','KT1-4/T2','KT1-6/T3','KT1-56/NC','KT1-68/NO','KT2-A2','KT2-2/T1','KT2-4/T2','KT2-6/T3','KT2-56/NC','KT2-68/NO','PLC-1L','PLC-Q0.0','PLC-Q0.1','PLC-Q0.2','PLC-Q0.3','PLC-Q0.4','PLC-2L','PLC-Q0.5','PLC-Q0.6','PLC-Q0.7','L1','L2','L3','U2','V2','W2','5/DI0','6/DI1','7/DI2','8/DI3','16/DI14','17/DI15','28/GND/69DI COM1/34/DI COM2']
     },
     {
         name: 'region_003',
         title: '区域三',
-        contacts: ['KM1-A1','KM1-1L1','KM1-3L2','KM1-5L3','KM1-13','KM1-53','KM1-61','KM1-71','KM1-83','KM2-A1','KM2-1L1','KM2-3L2','KM2-5L3','KM2-13','KM2-53','KM2-61','KM2-71','KM2-83','KM3-A1','KM3-1L1','KM3-3L2','KM3-5L3','KM3-13','KM3-53','KM3-61','KM3-71','KM3-83','FR1-1L1','FR1-3L2','FR1-5L3','FR2-1L1','FR2-3L2','FR2-5L3','SB1-1','SB1-2','SB1-3','SB1-4','SB2-1','SB2-2','SB2-3','SB2-4','SB3-1','SB3-2','SB3-3','SB3-4','HL1-1','HL1-2','HL2-1','HL2-2','HL3-1','HL3-2']
+        contacts: ['KM1-A1','KM1-1/L1','KM1-3/L2','KM1-5/L3','KM1-13/NO','KM1-53/NO','KM1-61/NC','KM1-71/NC','KM1-83/NO','KM2-A1','KM2-1/L1','KM2-3/L2','KM2-5/L3','KM2-13/NO','KM2-53/NO','KM2-61/NC','KM2-71/NC','KM2-83/NO','KM3-A1','KM3-1/L1','KM3-3/L2','KM3-5/L3','KM3-13/NO','KM3-53/NO','KM3-61/NC','KM3-71/NC','KM3-83/NO','FR1-1/L1','FR1-3/L2','FR1-5/L3','FR2-1/L1','FR2-3/L2','FR2-5/L3','SB1-1/NC','SB1-2/NC','SB1-3/NO','SB1-4/NO','SB2-1/NC','SB2-2/NC','SB2-3/NO','SB2-4/NO','SB3-1/NC','SB3-2/NC','SB3-3/NO','SB3-4/NO','HL1-1','HL1-2','HL2-1','HL2-2','HL3-1','HL3-2']
     },
     {
         name: 'region_004',
         title: '区域四',
-        contacts: ['KM1-A2','KM1-2T1','KM1-4T2','KM1-6T3','KM1-14','KM1-54','KM1-62','KM1-72','KM1-84','KM2-A2','KM2-2T1','KM2-4T2','KM2-6T3','KM2-14','KM2-54','KM2-62','KM2-72','KM2-84','KM3-A2','KM3-2T1','KM3-4T2','KM3-6T3','KM3-14','KM3-54','KM3-62','KM3-72','KM3-84','FR1-2T1','FR1-4T2','FR1-6T3','FR1-98','FR1-97','FR1-96','FR1-95','FR2-2T1','FR2-4T2','FR2-6T3','FR2-98','FR2-97','FR2-96','FR2-95','XT1-1','XT1-2','XT1-3','XT1-4','XT1-5','XT1-6','XT2-1','XT2-2','XT2-3','XT2-4','XT2-5','XT2-6']
+        contacts: ['KM1-A2','KM1-2/T1','KM1-4/T2','KM1-6/T3','KM1-14/NO','KM1-54/NO','KM1-62/NC','KM1-72/NC','KM1-84/NO','KM2-A2','KM2-2/T1','KM2-4/T2','KM2-6/T3','KM2-14/NO','KM2-54/NO','KM2-62/NC','KM2-72/NC','KM2-84/NO','KM3-A2','KM3-2/T1','KM3-4/T2','KM3-6/T3','KM3-14/NO','KM3-54/NO','KM3-62/NC','KM3-72/NC','KM3-84/NO','FR1-2/T1','FR1-4/T2','FR1-6/T3','FR1-98/NO','FR1-97/NO','FR1-96/NC','FR1-95/NC','FR2-2/T1','FR2-4/T2','FR2-6/T3','FR2-98/NO','FR2-97/NO','FR2-96/NC','FR2-95/NC','XT1-1','XT1-2','XT1-3','XT1-4','XT1-5','XT1-6','XT2-1','XT2-2','XT2-3','XT2-4','XT2-5','XT2-6']
     }
 ];
 const app = createApp({
@@ -2744,10 +2757,17 @@ const app = createApp({
             return filtered;
         },
         ruleContactRegions() {
+            const inverterContacts = new Set([
+                'L1', 'L2', 'L3', 'U2', 'V2', 'W2',
+                '5/DI0', '6/DI1', '7/DI2', '8/DI3',
+                '16/DI14', '17/DI15', '28/GND/69DI COM1/34/DI COM2'
+            ]);
             return RULE_CONTACT_REGIONS.map(region => {
                 const grouped = {};
                 region.contacts.forEach(contact => {
-                    const componentName = contact.split('-')[0];
+                    const componentName = inverterContacts.has(contact)
+                        ? 'INV'
+                        : contact.split('-')[0];
                     if (!grouped[componentName]) {
                         grouped[componentName] = [];
                     }
@@ -2758,7 +2778,9 @@ const app = createApp({
                     ...region,
                     components: Object.entries(grouped).map(([name, contacts]) => ({
                         name,
-                        contacts: contacts.slice().sort((a, b) => a.localeCompare(b, 'zh-CN'))
+                        contacts: name === 'INV'
+                            ? contacts.slice()
+                            : contacts.slice().sort((a, b) => a.localeCompare(b, 'zh-CN'))
                     }))
                 };
             });
@@ -3037,14 +3059,21 @@ const app = createApp({
                 height: Math.ceil(Math.max(scale.scrollHeight, scale.offsetHeight, scale.clientHeight))
             };
         },
+        scheduleRuleCanvasRefresh() {
+            this.$nextTick(() => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(this.refreshRuleCanvas);
+                });
+            });
+        },
         zoomRulePanel(delta) {
             const nextZoom = Math.min(1.35, Math.max(0.65, Number(this.ruleBuilder.zoom || 1) + delta));
             this.ruleBuilder.zoom = Number(nextZoom.toFixed(2));
-            this.$nextTick(this.refreshRuleCanvas);
+            this.scheduleRuleCanvasRefresh();
         },
         resetRuleZoom() {
             this.ruleBuilder.zoom = 0.82;
-            this.$nextTick(this.refreshRuleCanvas);
+            this.scheduleRuleCanvasRefresh();
         },
         getRuleContactAnchor(contact) {
             const content = this.$refs.ruleCanvasContent;

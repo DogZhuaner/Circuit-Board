@@ -16,10 +16,38 @@
     <!-- AOS Animation -->
     <link href="/static/css/aos.css" rel="stylesheet">
     <script src="/static/js/aos.js"></script>
-    <!-- Chart.js -->
-    <script src="/static/js/chart.min.js"></script>
 
     <style>
+        [v-cloak] { display: none; }
+
+        .exam-actions .btn-custom {
+            padding: 10px 20px;
+            border-radius: 10px;
+            box-shadow: none;
+        }
+
+        .exam-actions .btn-stop {
+            color: var(--danger-dark);
+            background: white;
+            border: 1px solid #f1bfc0;
+        }
+
+        .exam-actions .btn-stop:hover {
+            background: #fff5f5;
+        }
+
+        .exam-actions .btn-custom:disabled {
+            color: #687481;
+            background: #f5f6f8;
+            border: 1px solid var(--border-color);
+            opacity: 1;
+        }
+
+        @media (min-width: 768px) {
+            .exam-actions { grid-template-columns: auto auto 1fr; }
+            .exam-actions .btn-primary { justify-self: end; }
+        }
+
         :root {
             --primary-color: #4f46e5;
             --primary-dark: #3730a3;
@@ -86,6 +114,37 @@
         .card-custom:hover {
             transform: translateY(-8px) scale(1.02);
             box-shadow: var(--shadow-xl);
+        }
+
+        .practice-panels {
+            display: grid;
+            gap: 1.5rem;
+            grid-template-rows: clamp(20rem, 55vh, 30rem) clamp(15rem, 38vh, 22rem);
+        }
+
+        .practice-panels > .card {
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .practice-panels > .card > .card-body {
+            min-height: 0;
+            overflow: auto;
+            scrollbar-gutter: stable;
+            overflow-wrap: anywhere;
+        }
+
+        .practice-layout .card-custom:hover {
+            transform: none;
+        }
+
+        @media (min-width: 992px) {
+            .practice-panels {
+                /* The control column sets the row height, even as records and questions grow. */
+                contain: size;
+                grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+            }
         }
 
         .btn-custom {
@@ -383,14 +442,6 @@
             font-size: 0.9rem;
         }
 
-        .chart-container {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: var(--shadow-sm);
-            margin: 20px 0;
-        }
-
         .modal-xl {
             max-width: 90%;
         }
@@ -648,8 +699,34 @@
     </style>
 </head>
 <body>
+    {% macro control_status() %}
+    <div{% if not selected_exam %} class="mt-4"{% endif %} data-aos="fade-up" data-aos-delay="{{ 500 if selected_exam else 1000 }}">
+        <div class="alert alert-info" role="status">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>状态：</strong>{% raw %}{{ statusMessage }}{% endraw %}
+        </div>
+    </div>
+    {% endmacro %}
+    {% macro contact_panel() %}{% raw %}
+    <div class="mb-4" data-aos="fade-up" data-aos-delay="700">
+        <h6 class="text-muted mb-2">
+            <i class="bi bi-plug me-2"></i>
+            实时接线触点
+        </h6>
+        <div class="contacts-display">
+            <div v-if="latestContacts.length > 0" class="contact-item">
+                <span class="contact-label">最新接线：</span>
+                <span class="contact-value">{{ latestContacts[0] }} ↔ {{ latestContacts[1] }}</span>
+            </div>
+            <div v-else class="contact-item">
+                <span class="contact-label">最新接线：</span>
+                <span class="contact-value text-muted">暂无接线</span>
+            </div>
+        </div>
+    </div>
+    {% endraw %}{% endmacro %}
     {% raw %}
-    <div id="app" class="container-fluid py-4">
+    <div id="app" class="container-fluid py-4" v-cloak>
         <div class="main-container" data-aos="fade-up" data-aos-duration="1000">
             <!-- 头部 -->
             <div class="header-gradient p-4">
@@ -657,7 +734,7 @@
                     <div class="col-md-8">
                         <h1 class="mb-0" data-aos="fade-right" data-aos-delay="200">
                             <i class="bi bi-lightning-charge me-3"></i>
-                            学生端 - 电路配盘接线系统
+                            {{ selectedExam ? '考试 · ' + selectedExam.name : '练习 · 电路配盘接线系统' }}
                         </h1>
                     </div>
                     <div class="col-md-4 text-end">
@@ -689,9 +766,9 @@
 
             <!-- 主要内容 -->
             <div class="p-4">
-                <div class="row">
-                    <!-- 左侧：控制面板 -->
-                    <div class="col-lg-4 mb-4">
+                <div class="row" :class="{ 'practice-layout': !selectedExam }">
+                    <!-- 操作控制 -->
+                    <div class="mb-4" :class="selectedExam ? 'col-12' : 'col-lg-4 mb-lg-0'">
                         <div class="card card-custom h-100" data-aos="fade-right" data-aos-delay="400">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0">
@@ -700,7 +777,7 @@
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <div class="rule-select-panel" data-aos="fade-up" data-aos-delay="520">
+                                <div v-if="!selectedExam" class="rule-select-panel" data-aos="fade-up" data-aos-delay="520">
                                     <div class="rule-select-label">
                                         <span><i class="bi bi-file-earmark-check me-2"></i>考核规则</span>
                                         <small>{{ ruleFiles.length }} 个文件</small>
@@ -721,37 +798,23 @@
                                     </div>
                                 </div>
 
-                                <!-- 得分显示 -->
-                                <div class="text-center mb-4" data-aos="zoom-in" data-aos-delay="600">
+                                <!-- 练习实时得分 -->
+                                <div v-if="!selectedExam" class="text-center mb-4" data-aos="zoom-in" data-aos-delay="600">
                                     <div class="score-display" :class="scoreClass">
                                         <i class="bi bi-trophy me-2"></i>
                                         得分：{{ currentScore }}分
                                     </div>
                                 </div>
 
-                                <!-- 实时接线触点显示 -->
-                                <div class="mb-4" data-aos="fade-up" data-aos-delay="700">
-                                    <h6 class="text-muted mb-2">
-                                        <i class="bi bi-plug me-2"></i>
-                                        实时接线触点
-                                    </h6>
-                                    <div class="contacts-display">
-                                        <div v-if="latestContacts.length > 0" class="contact-item">
-                                            <span class="contact-label">最新接线：</span>
-                                            <span class="contact-value">{{ latestContacts[0] }} ↔ {{ latestContacts[1] }}</span>
-                                        </div>
-                                        <div v-else class="contact-item">
-                                            <span class="contact-label">最新接线：</span>
-                                            <span class="contact-value text-muted">暂无接线</span>
-                                        </div>
-                                    </div>
-                                </div>
+                                {% endraw %}{% if not selected_exam %}{{ contact_panel() }}{% endif %}{% raw %}
+
+                                {% endraw %}{% if selected_exam %}{{ control_status() }}{% endif %}{% raw %}
 
                                 <!-- 控制按钮 -->
-                                <div class="d-grid gap-3">
+                                <div class="d-grid gap-3" :class="{ 'exam-actions': selectedExam }">
                                     <button
                                         @click="startDetection"
-                                        :disabled="detectionRunning || loading"
+                                        :disabled="detectionRunning || loading || submittedScore !== null"
                                         class="btn btn-custom btn-start"
                                         data-aos="fade-up" data-aos-delay="700">
                                         <i class="bi bi-play-circle me-2"></i>
@@ -768,7 +831,13 @@
                                         停止接线操作
                                     </button>
 
+                                    <button v-if="selectedExam" type="button" class="btn btn-custom btn-primary"
+                                            @click="submitExam" :disabled="loading || !examRecordingId || submittedScore !== null">
+                                        <i class="bi bi-check2-square me-2"></i>检查并提交成绩
+                                    </button>
+
                                     <button
+                                        v-if="!selectedExam"
                                         @click="openAiChat"
                                         class="btn btn-custom btn-ai"
                                         data-aos="fade-up" data-aos-delay="900">
@@ -777,14 +846,7 @@
                                     </button>
 
                                     <button
-                                        @click="openDataVisualization"
-                                        class="btn btn-custom btn-info"
-                                        data-aos="fade-up" data-aos-delay="1000">
-                                        <i class="bi bi-graph-up me-2"></i>
-                                        成绩数据可视化
-                                    </button>
-
-                                    <button
+                                        v-if="!selectedExam"
                                         @click="openQuestionGeneration"
                                         class="btn btn-custom btn-warning"
                                         data-aos="fade-up" data-aos-delay="1100">
@@ -793,19 +855,13 @@
                                     </button>
                                 </div>
 
-                                <!-- 状态信息 -->
-                                <div class="mt-4" data-aos="fade-up" data-aos-delay="1000">
-                                    <div class="alert alert-info">
-                                        <i class="bi bi-info-circle me-2"></i>
-                                        <strong>状态：</strong>{{ statusMessage }}
-                                    </div>
-                                </div>
+                                {% endraw %}{% if not selected_exam %}{{ control_status() }}{% endif %}{% raw %}
                             </div>
                         </div>
                     </div>
 
-                    <!-- 右侧：实时接线情况和题目信息 -->
-                    <div class="col-lg-8">
+                    <!-- 实时接线情况和练习题目 -->
+                    <div :class="selectedExam ? 'col-12' : 'col-lg-8 practice-panels'">
                         <!-- 实时接线情况 -->
                         <div class="card card-custom" data-aos="fade-left" data-aos-delay="500">
                             <div class="card-header bg-success text-white">
@@ -814,9 +870,9 @@
                                     实时接线情况
                                 </h5>
                             </div>
-                            <div class="card-body">
+                            <div class="card-body" :tabindex="selectedExam ? null : 0">
                                 <!-- 空气开关状态和错误接线次数状态栏 -->
-                                <div class="status-bars mb-4">
+                                <div v-if="!selectedExam" class="status-bars mb-4">
                                     <div class="status-bar-item">
                                         <div class="status-label">空气开关状态</div>
                                         <div class="status-value" :class="{ 'air-switch-closed': airSwitchClosed, 'air-switch-open': !airSwitchClosed }">
@@ -833,6 +889,12 @@
                                     </div>
                                 </div>
 
+                                <div v-if="selectedExam && submittedScore !== null" class="text-center mb-4" role="status">
+                                    <strong>已提交成绩：{{ submittedScore }} 分</strong>
+                                </div>
+
+                                {% endraw %}{% if selected_exam %}{{ contact_panel() }}{% endif %}{% raw %}
+
                                 <div class="table-responsive">
                                     <table class="table table-custom">
                                         <thead>
@@ -841,13 +903,13 @@
                                                 <th>导线一端</th>
                                                 <th>导线另一端</th>
                                                 <th>操作</th>
-                                                <th>得分</th>
+                                                <th v-if="!selectedExam">得分</th>
                                                 <th>时间</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <!-- 显示接线结果 -->
-                                            <tr v-for="(result, index) in wiringResults" :key="result.id" data-aos="fade-up">
+                                            <tr v-for="(result, index) in wiringResults" :key="result.id" :data-aos="selectedExam ? 'fade-up' : null">
                                                 <td>{{ index + 1 }}</td>
                                                 <td>{{ result.end1 }}</td>
                                                 <td>{{ result.end2 }}</td>
@@ -858,7 +920,7 @@
                                                         {{ result.action || '未知操作' }}
                                                     </span>
                                                 </td>
-                                                <td>
+                                                <td v-if="!selectedExam">
                                                     <span
                                                         class="badge"
                                                         :class="result.score >= 0 ? 'bg-success' : 'bg-danger'">
@@ -869,7 +931,7 @@
                                             </tr>
                                             
                                             <tr v-if="wiringResults.length === 0">
-                                                <td colspan="6" class="text-center text-muted py-4">
+                                                <td :colspan="selectedExam ? 5 : 6" class="text-center text-muted py-4">
                                                     <i class="bi bi-inbox display-4 d-block mb-3"></i>
                                                     暂无接线记录
                                                 </td>
@@ -881,14 +943,14 @@
                         </div>
                         
                         <!-- 自动生成题目信息框 -->
-                        <div class="card card-custom mb-4" data-aos="fade-left" data-aos-delay="600">
+                        <div v-if="!selectedExam" class="card card-custom" data-aos="fade-left" data-aos-delay="600">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0">
                                     <i class="bi bi-question-circle me-2"></i>
                                     知识点练习题目
                                 </h5>
                             </div>
-                            <div class="card-body">
+                            <div class="card-body" tabindex="0">
                                 <div v-if="autoQuestionLoading" class="text-center">
                                     <div class="spinner-border" role="status">
                                         <span class="visually-hidden">加载中...</span>
@@ -915,7 +977,7 @@
         </div>
 
         <!-- AI对话模态框 -->
-        <div class="modal fade" id="aiChatModal" tabindex="-1">
+        <div v-if="!selectedExam" class="modal fade" id="aiChatModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">
                     <div class="modal-header bg-primary text-white">
@@ -995,128 +1057,8 @@
             </div>
         </div>
 
-        <!-- 数据可视化模态框 -->
-        <div class="modal fade" id="dataVisualizationModal" tabindex="-1">
-            <div class="modal-dialog modal-xl">
-                <div class="modal-content">
-                    <div class="modal-header bg-info text-white">
-                        <h5 class="modal-title"><i class="bi bi-graph-up me-2"></i>学生成绩可视化</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <!-- 学生基本信息 -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header"><i class="bi bi-person me-2"></i>学生信息</div>
-                                    <div class="card-body">
-                                        <div class="row">
-                                            <div class="col-6">
-                                                <strong>学号：</strong>{{ studentInfo.student_id }}
-                                            </div>
-                                            <div class="col-6">
-                                                <strong>姓名：</strong>{{ studentInfo.student_name }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header"><i class="bi bi-calendar-check me-2"></i>考试统计</div>
-                                    <div class="card-body">
-                                        <div class="row text-center">
-                                            <div class="col-6">
-                                                <h4 class="text-primary">{{ studentExams.length }}</h4>
-                                                <small class="text-muted">参加考试数</small>
-                                            </div>
-                                            <div class="col-6">
-                                                <h4 class="text-success">{{ avgScore }}</h4>
-                                                <small class="text-muted">平均成绩</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 成绩趋势图 -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header"><i class="bi bi-line-chart me-2"></i>成绩趋势</div>
-                                    <div class="card-body">
-                                        <div class="chart-container" style="height: 400px;">
-                                            <canvas id="scoreTrendChart"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 易错知识点分析 -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header"><i class="bi bi-bar-chart me-2"></i>易错知识点分析</div>
-                                    <div class="card-body">
-                                        <div class="chart-container" style="height: 400px;">
-                                            <canvas id="knowledgeChart"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 考试成绩列表 -->
-                        <div class="row">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <i class="bi bi-table me-2"></i>考试成绩详情
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="table-responsive">
-                                            <table class="table table-striped table-hover">
-                                                <thead class="table-dark">
-                                                    <tr>
-                                                        <th>考试ID</th>
-                                                        <th>考试名称</th>
-                                                        <th>成绩</th>
-                                                        <th>等级</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr v-for="score in studentScores" :key="score.test_id">
-                                                        <td>{{ score.test_id }}</td>
-                                                        <td>{{ score.test_name }}</td>
-                                                        <td>
-                                                            <span class="badge" :class="getScoreClass(score.score)">{{ score.score }}</span>
-                                                        </td>
-                                                        <td>
-                                                            <span class="badge" :class="getScoreClass(score.score)">{{ getScoreLevel(score.score) }}</span>
-                                                        </td>
-                                                    </tr>
-                                                    <tr v-if="studentScores.length === 0">
-                                                        <td colspan="4" class="text-center text-muted py-4">
-                                                            <i class="bi bi-inbox display-4 d-block mb-3"></i>
-                                                            暂无考试记录
-                                                        </td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- 题目生成模态框 -->
-        <div class="modal fade" id="questionGenerationModal" tabindex="-1">
+        <div v-if="!selectedExam" class="modal fade" id="questionGenerationModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">
                     <div class="modal-header bg-warning text-dark">
@@ -1204,7 +1146,7 @@
         </div>
 
         <!-- AI模型设置弹窗 -->
-        <div class="modal fade" id="aiModelSettingModal" tabindex="-1">
+        <div v-if="!selectedExam" class="modal fade" id="aiModelSettingModal" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header card-header-ai">
@@ -1305,6 +1247,9 @@
                 return {
                     // 应用初始化状态
                     ready: false,
+                    selectedExam: {{ selected_exam|tojson }},
+                    submittedScore: {{ submitted_score|tojson }},
+                    examRecordingId: '',
                     
                     // 连接状态
                     connected: false,
@@ -1339,11 +1284,6 @@
                     // Socket.IO
                     socket: null,
 
-                    // 数据可视化相关
-                    studentExams: [],
-                    studentScores: [],
-                    studentKnowledge: [],
-                    avgScore: 0,
                     availableSubjects: ['电路学'],
                     selectedSubject: '电路学',
                     availableKnowledge: [], // 改为空数组，由API动态加载
@@ -1383,6 +1323,10 @@
             },
 
             computed: {
+                examStorageKey() {
+                    return this.selectedExam && 'exam-attempt:' + this.studentInfo.student_id + ':' + this.selectedExam.id;
+                },
+
                 connectionStatus() {
                     return this.connected ? 'status-connected' : 'status-disconnected';
                 },
@@ -1402,10 +1346,13 @@
                 this.initSocket();
                 this.loadStudentInfo();
                 this.loadInitialData();
-                this.loadRuleFiles();
-                
-                // 设置应用为就绪状态
                 this.ready = true;
+                if (this.selectedExam) {
+                    this.restoreExamAttempt();
+                    return;
+                }
+
+                this.loadRuleFiles();
                 
                 // 从localStorage加载Ollama配置，用于自动生成题目
                 const savedIp = localStorage.getItem('ollama_ip');
@@ -1435,6 +1382,45 @@
             },
             
             methods: {
+                rememberExamAttempt() {
+                    if (!this.selectedExam) return;
+                    sessionStorage.setItem(this.examStorageKey, JSON.stringify({
+                        session: this.examSessionId, recording: this.examRecordingId,
+                        running: this.detectionRunning
+                    }));
+                },
+
+                restoreExamAttempt() {
+                    if (this.submittedScore !== null) {
+                        this.showSubmittedScore(this.submittedScore);
+                        return;
+                    }
+                    let attempt;
+                    try {
+                        attempt = JSON.parse(sessionStorage.getItem(this.examStorageKey));
+                    } catch {
+                        sessionStorage.removeItem(this.examStorageKey);
+                    }
+                    if (!attempt?.recording || !attempt.session) return;
+                    this.examRecordingId = attempt.recording;
+                    this.examSessionId = attempt.session;
+                    this.detectionRunning = attempt.running;
+                    if (this.detectionRunning) this.setupPolling();
+                    this.statusMessage = this.detectionRunning ? '检测进行中' : '检测已停止，可检查并提交成绩';
+                },
+
+                showSubmittedScore(score) {
+                    this.submittedScore = score;
+                    this.detectionRunning = false;
+                    this.clearPolling();
+                    this.statusMessage = '成绩已提交';
+                    sessionStorage.removeItem(this.examStorageKey);
+                },
+
+                alertInPractice(message) {
+                    if (!this.selectedExam) window.alert(message);
+                },
+
                 async loadRuleFiles() {
                     this.ruleLoading = true;
                     try {
@@ -1456,8 +1442,9 @@
                 },
 
                 async confirmRuleSelection() {
+                    if (this.selectedExam) return;
                     if (!this.selectedRuleFile) {
-                        alert('请先选择规则文件');
+                        this.alertInPractice('请先选择规则文件');
                         return;
                     }
                     if (!confirm(`确定使用 ${this.selectedRuleFile} 作为当前考核评判标准吗？这会覆盖 current_rule.json。`)) {
@@ -1498,22 +1485,22 @@
                             const pullData = await pullResponse.json();
                             if (pullData.success) {
                                 this.statusMessage = '规则已应用并同步到本地';
-                                alert('规则已应用并同步到本地');
+                                this.alertInPractice('规则已应用并同步到本地');
                             } else {
                                 const message = pullData.message || '未知错误';
                                 this.statusMessage = `服务端规则已应用，但同步到本地失败：${message}`;
-                                alert(`服务端规则已应用，但同步到本地失败：${message}`);
+                                this.alertInPractice(`服务端规则已应用，但同步到本地失败：${message}`);
                             }
                         } catch (pullError) {
-                            const message = pullError.message || '未知错误';
-                            this.statusMessage = `服务端规则已应用，但无法连接本地网关。请确认 ${LOCAL_CLIENT_BASE} 已启动。`;
-                            alert(`服务端规则已应用，但无法连接本地网关。请确认 ${LOCAL_CLIENT_BASE} 已启动。错误：${message}`);
+                            const message = this.localGatewayUnavailableMessage(pullError, '服务端规则已应用，但无法同步到本地');
+                            this.statusMessage = message;
+                            this.alertInPractice(message);
                         }
 
                         await this.loadRuleFiles();
                     } catch (error) {
                         console.error('选择规则文件失败:', error);
-                        alert(error.message || '选择规则文件失败');
+                        this.alertInPractice(error.message || '选择规则文件失败');
                     } finally {
                         this.ruleLoading = false;
                     }
@@ -1526,7 +1513,9 @@
                     }
                     this.wiringStatusPolling = setInterval(() => {
                         this.getWiringStatus();
-                    }, 2000); // 5秒间隔
+                    }, 2000);
+
+                    if (this.selectedExam) return;
 
                     if (this.airSwitchPolling) {
                         clearInterval(this.airSwitchPolling);
@@ -1703,8 +1692,8 @@
                     }
 
                     const studentInfo = {
-                        student_id: urlStudentId || INITIAL_STUDENT_INFO.student_id || savedStudentInfo.student_id || '',
-                        student_name: urlStudentName || INITIAL_STUDENT_INFO.student_name || savedStudentInfo.student_name || ''
+                        student_id: INITIAL_STUDENT_INFO.student_id || urlStudentId || savedStudentInfo.student_id || '',
+                        student_name: INITIAL_STUDENT_INFO.student_name || urlStudentName || savedStudentInfo.student_name || ''
                     };
 
                     this.studentInfo = studentInfo;
@@ -1728,9 +1717,23 @@
                 // 开始检测
                 async startDetection() {
                     this.loading = true;
-                    this.resetCurrentWiringStatus();
                     try {
-                        this.examSessionId = (window.crypto && crypto.randomUUID)
+                        if (this.selectedExam) {
+                            try {
+                                const response = await fetch('api/exam/entry' + window.location.search, { cache: 'no-store' });
+                                const result = await response.json();
+                                if (!response.ok || !result.success) throw new Error(result.message);
+                                if (result.submitted_score != null) {
+                                    this.showSubmittedScore(result.submitted_score);
+                                    return;
+                                }
+                            } catch (error) {
+                                this.statusMessage = error.message || '暂时无法确认考试状态，请稍后重试';
+                                return;
+                            }
+                        }
+                        this.resetCurrentWiringStatus();
+                        const newSessionId = (window.crypto && crypto.randomUUID)
                             ? crypto.randomUUID()
                             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
                         const response = await fetch(`${LOCAL_CLIENT_BASE}/api/yolo/start`, {
@@ -1741,32 +1744,40 @@
                             body: JSON.stringify({
                                 student_no: this.studentInfo.student_id,
                                 student_name: this.studentInfo.student_name,
-                                session_id: this.examSessionId,
+                                session_id: newSessionId,
+                                test_id: this.selectedExam ? this.selectedExam.id : '',
+                                test_name: this.selectedExam ? this.selectedExam.name : '',
                                 rule_file: this.currentRuleFile || 'current_rule.json'
                             })
                         });
 
                         const data = await response.json();
                         if (data.success) {
+                            this.examSessionId = newSessionId;
                             this.detectionRunning = true;
+                            if (this.selectedExam) {
+                                this.examRecordingId = data.recording_id;
+                                this.rememberExamAttempt();
+                            }
                             this.statusMessage = data.message;
                             this.setupPolling();
-                            this.getAirSwitchStatus();
+                            if (!this.selectedExam) this.getAirSwitchStatus();
                             this.getWiringStatus();
                         } else {
-                            this.detectionRunning = Boolean(data.running);
+                            this.detectionRunning = !this.selectedExam && Boolean(data.running);
                             this.statusMessage = data.message || '启动检测失败';
                             if (!this.detectionRunning) {
                                 this.clearPolling();
                             }
-                            alert(data.message);
+                            this.alertInPractice(data.message);
                         }
                     } catch (error) {
                         console.error('启动检测失败:', error);
                         this.detectionRunning = false;
                         this.clearPolling();
-                        this.statusMessage = '启动检测失败';
-                        alert('启动检测失败');
+                        const message = this.localGatewayUnavailableMessage(error, '启动检测失败');
+                        this.statusMessage = message;
+                        this.alertInPractice(message);
                     } finally {
                         this.loading = false;
                     }
@@ -1785,36 +1796,65 @@
                     this.displayedWiringEventKeys = [];
                 },
 
-                // 停止检测
+                localGatewayUnavailableMessage(error, prefix) {
+                    const detail = error && error.message ? ` 错误：${error.message}` : '';
+                    return `${prefix}：无法连接本地网关 ${LOCAL_CLIENT_BASE}。请先在学生机启动 Client/local_gateway.py，并确认依赖已安装、端口 6001 正在监听。${detail}`;
+                },
+
+                async finishDetection() {
+                    let data;
+                    try {
+                        const response = await fetch(LOCAL_CLIENT_BASE + '/api/yolo/stop', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ student_no: this.studentInfo.student_id, session_id: this.examSessionId })
+                        });
+                        data = await response.json();
+                    } catch (error) {
+                        throw new Error(this.localGatewayUnavailableMessage(error, '停止检测失败'));
+                    }
+                    if (!data.success) throw new Error(data.message || '停止检测失败');
+                    this.detectionRunning = false;
+                    this.clearPolling();
+                    this.statusMessage = data.message;
+                    this.rememberExamAttempt();
+                },
+
                 async stopDetection() {
                     this.loading = true;
                     try {
-                        const response = await fetch(`${LOCAL_CLIENT_BASE}/api/yolo/stop`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                student_no: this.studentInfo.student_id,
-                                session_id: this.examSessionId
-                            })
-                        });
-
-                        const data = await response.json();
-                        if (data.success) {
-                            this.detectionRunning = false;
-                            this.statusMessage = data.message;
-                            this.clearPolling();
-                        } else {
-                            alert(data.message);
-                        }
+                        await this.finishDetection();
                     } catch (error) {
-                        console.error('停止检测失败:', error);
-                        alert('停止检测失败');
+                        this.statusMessage = error.message;
+                        this.alertInPractice(error.message);
                     } finally {
-                        if (!this.detectionRunning) {
-                            this.clearPolling();
+                        this.loading = false;
+                    }
+                },
+
+                async submitExam() {
+                    if (this.loading || !this.examRecordingId || this.submittedScore !== null) return;
+                    if (!window.confirm('提交后不可更改成绩，是否确认？')) return;
+                    this.loading = true;
+                    try {
+                        if (this.detectionRunning) await this.finishDetection();
+                        const path = '/api/recordings/' + encodeURIComponent(this.examRecordingId) + '/exam-receipt?archive=1';
+                        const bundleResponse = await fetch(LOCAL_CLIENT_BASE + path, { method: 'POST' });
+                        const bundle = await bundleResponse.json();
+                        if (!bundleResponse.ok || !bundle.archive || !bundle.receipt) {
+                            throw new Error(bundle.message || '无法读取接线回顾文件，请检查本机网关版本');
                         }
+                        const response = await fetch('api/exam/result' + window.location.search, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ receipt: bundle.receipt, archive: bundle.archive })
+                        });
+                        const result = await response.json();
+                        if (!response.ok || !result.success) throw new Error(result.message || '提交失败，请重试');
+                        this.showSubmittedScore(result.score);
+                    } catch (error) {
+                        this.statusMessage = '提交未确认：' + error.message;
+                    } finally {
                         this.loading = false;
                     }
                 },
@@ -1908,7 +1948,7 @@
                 // 生成题目
                 async generateQuestion() {
                     if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
-                        alert('请先配置Ollama大模型设置！');
+                        this.alertInPractice('请先配置Ollama大模型设置！');
                         return;
                     }
 
@@ -1933,11 +1973,11 @@
                         if (data.success) {
                             this.generatedQuestion = data.question;
                         } else {
-                            alert(`生成题目失败: ${data.message}`);
+                            this.alertInPractice(`生成题目失败: ${data.message}`);
                         }
                     } catch (error) {
                         console.error('生成题目失败:', error);
-                        alert('生成题目失败');
+                        this.alertInPractice('生成题目失败');
                     } finally {
                         this.questionLoading = false;
                     }
@@ -1988,7 +2028,7 @@
                 // 测试Ollama连接
                 async testOllamaConnection() {
                     if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
-                        alert('请先配置Ollama大模型设置！');
+                        this.alertInPractice('请先配置Ollama大模型设置！');
                         return;
                     }
 
@@ -2016,7 +2056,7 @@
                 // 保存Ollama配置
                 saveOllamaConfig() {
                     if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
-                        alert('请填写完整的Ollama大模型设置！');
+                        this.alertInPractice('请填写完整的Ollama大模型设置！');
                         return;
                     }
 
@@ -2025,14 +2065,14 @@
                     localStorage.setItem('ollama_port', this.ollamaConfig.port);
                     localStorage.setItem('ollama_model', this.ollamaConfig.model);
 
-                    alert('Ollama大模型配置已保存！');
+                    this.alertInPractice('Ollama大模型配置已保存！');
                     this.testOllamaConnection(); // 重新测试连接
                 },
 
                 // 测试AI Ollama连接
                 async testAiOllamaConnection() {
                     if (!this.aiOllamaConfig.ip || !this.aiOllamaConfig.port || !this.aiOllamaConfig.model) {
-                        alert('请先配置AI Ollama大模型设置！');
+                        this.alertInPractice('请先配置AI Ollama大模型设置！');
                         return;
                     }
 
@@ -2060,7 +2100,7 @@
                 // 保存AI Ollama配置
                 saveAiOllamaConfig() {
                     if (!this.aiOllamaConfig.ip || !this.aiOllamaConfig.port || !this.aiOllamaConfig.model) {
-                        alert('请填写完整的AI Ollama大模型设置！');
+                        this.alertInPractice('请填写完整的AI Ollama大模型设置！');
                         return;
                     }
 
@@ -2069,7 +2109,7 @@
                     localStorage.setItem('ai_ollama_port', this.aiOllamaConfig.port);
                     localStorage.setItem('ai_ollama_model', this.aiOllamaConfig.model);
 
-                    alert('AI Ollama大模型配置已保存！');
+                    this.alertInPractice('AI Ollama大模型配置已保存！');
                     this.testAiOllamaConnection(); // 重新测试连接
                 },
 
@@ -2078,304 +2118,6 @@
                     if (!question) return '';
                     // 将换行符转换为HTML换行标签
                     return question.replace(/\n/g, '<br>');
-                },
-
-                // 数据可视化相关方法
-                async openDataVisualization() {
-                    const modal = new bootstrap.Modal(document.getElementById('dataVisualizationModal'));
-                    modal.show();
-
-                    // 加载数据
-                    await this.loadStudentExamData();
-                },
-
-                // 加载学生考试数据
-                async loadStudentExamData() {
-                    try {
-                        const studentNo = this.studentInfo.student_id;
-                        if (!studentNo) {
-                            console.error('缺少学生学号，无法加载成绩数据');
-                            return;
-                        }
-                        const query = new URLSearchParams({ student_no: studentNo }).toString();
-                        // 并行加载数据
-                        const [examsResponse, scoresResponse, knowledgeResponse] = await Promise.all([
-                            fetch(`api/student/exams?${query}`),
-                            fetch(`api/student/score?${query}`),
-                            fetch(`api/student/knowledge?${query}`)
-                        ]);
-
-                        const examsData = await examsResponse.json();
-                        const scoresData = await scoresResponse.json();
-                        const knowledgeData = await knowledgeResponse.json();
-
-                        if (examsData.success) {
-                            this.studentExams = examsData.exams;
-                        }
-
-                        if (scoresData.success) {
-                            this.studentScores = scoresData.scores;
-                            // 计算平均成绩
-                            this.calculateAvgScore();
-                            // 绘制成绩趋势图
-                            this.drawScoreTrendChart();
-                        }
-
-                        if (knowledgeData.success) {
-                            this.studentKnowledge = knowledgeData.knowledge;
-                            // 绘制易错知识点图
-                            this.drawKnowledgeChart();
-                        }
-                    } catch (error) {
-                        console.error('加载学生考试数据失败:', error);
-                    }
-                },
-
-                // 计算平均成绩
-                calculateAvgScore() {
-                    if (this.studentScores.length === 0) {
-                        this.avgScore = 0;
-                        return;
-                    }
-
-                    const total = this.studentScores.reduce((sum, score) => sum + Number(score.score), 0);
-                    this.avgScore = Math.round(total / this.studentScores.length);
-                },
-
-                // 获取成绩等级
-                getScoreLevel(score) {
-                    if (score >= 90) return '优秀';
-                    if (score >= 80) return '良好';
-                    if (score >= 70) return '中等';
-                    if (score >= 60) return '及格';
-                    return '不及格';
-                },
-
-                // 获取成绩样式类
-                getScoreClass(score) {
-                    if (score >= 90) return 'bg-success';
-                    if (score >= 80) return 'bg-primary';
-                    if (score >= 70) return 'bg-info';
-                    if (score >= 60) return 'bg-warning';
-                    return 'bg-danger';
-                },
-
-                // 绘制成绩趋势图
-                drawScoreTrendChart() {
-                    const ctx = document.getElementById('scoreTrendChart').getContext('2d');
-
-                    // 销毁现有图表
-                    if (this.scoreTrendChart) {
-                        this.scoreTrendChart.destroy();
-                    }
-
-                    // 准备数据
-                    const labels = this.studentScores.map(score => score.test_name);
-                    const scores = this.studentScores.map(score => score.score);
-
-                    // 创建图表
-                    this.scoreTrendChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: '成绩趋势',
-                                data: scores,
-                                borderColor: '#4f46e5',
-                                backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                                borderWidth: 3,
-                                fill: true,
-                                tension: 0.4,
-                                pointBackgroundColor: '#4f46e5',
-                                pointBorderColor: '#fff',
-                                pointBorderWidth: 2,
-                                pointRadius: 6,
-                                pointHoverRadius: 8
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    display: true,
-                                    position: 'top',
-                                    labels: {
-                                        font: {
-                                            size: 14,
-                                            weight: 'bold'
-                                        }
-                                    }
-                                },
-                                tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                    titleFont: {
-                                        size: 16,
-                                        weight: 'bold'
-                                    },
-                                    bodyFont: {
-                                        size: 14
-                                    },
-                                    padding: 12,
-                                    cornerRadius: 8
-                                }
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    max: 100,
-                                    title: {
-                                        display: true,
-                                        text: '成绩',
-                                        font: {
-                                            size: 14,
-                                            weight: 'bold'
-                                        }
-                                    },
-                                    ticks: {
-                                        font: {
-                                            size: 12
-                                        }
-                                    }
-                                },
-                                x: {
-                                    title: {
-                                        display: true,
-                                        text: '考试名称',
-                                        font: {
-                                            size: 14,
-                                            weight: 'bold'
-                                        }
-                                    },
-                                    ticks: {
-                                        font: {
-                                            size: 12
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                },
-
-                // 绘制易错知识点图
-                drawKnowledgeChart() {
-                    const ctx = document.getElementById('knowledgeChart').getContext('2d');
-
-                    // 销毁现有图表
-                    if (this.knowledgeChart) {
-                        this.knowledgeChart.destroy();
-                    }
-
-                    // 准备数据
-                    const labels = this.studentKnowledge.map(item => item.name);
-                    const counts = this.studentKnowledge.map(item => item.count);
-
-                    // 生成颜色数组
-                    const colors = this.generateChartColors(labels.length);
-
-                    // 创建图表
-                    this.knowledgeChart = new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: '易错知识点出现次数',
-                                data: counts,
-                                backgroundColor: colors,
-                                borderColor: colors.map(color => color.replace('0.8', '1')),
-                                borderWidth: 2,
-                                borderRadius: 8,
-                                barThickness: 30
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    display: true,
-                                    position: 'top',
-                                    labels: {
-                                        font: {
-                                            size: 14,
-                                            weight: 'bold'
-                                        }
-                                    }
-                                },
-                                tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                    titleFont: {
-                                        size: 16,
-                                        weight: 'bold'
-                                    },
-                                    bodyFont: {
-                                        size: 14
-                                    },
-                                    padding: 12,
-                                    cornerRadius: 8
-                                }
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    title: {
-                                        display: true,
-                                        text: '出现次数',
-                                        font: {
-                                            size: 14,
-                                            weight: 'bold'
-                                        }
-                                    },
-                                    ticks: {
-                                        font: {
-                                            size: 12
-                                        }
-                                    }
-                                },
-                                x: {
-                                    title: {
-                                        display: true,
-                                        text: '知识点',
-                                        font: {
-                                            size: 14,
-                                            weight: 'bold'
-                                        }
-                                    },
-                                    ticks: {
-                                        font: {
-                                            size: 12
-                                        },
-                                        maxRotation: 45,
-                                        minRotation: 45
-                                    }
-                                }
-                            }
-                        }
-                    });
-                },
-
-                // 生成图表颜色
-                generateChartColors(count) {
-                    const colors = [
-                        'rgba(239, 68, 68, 0.8)',
-                        'rgba(245, 158, 11, 0.8)',
-                        'rgba(34, 197, 94, 0.8)',
-                        'rgba(59, 130, 246, 0.8)',
-                        'rgba(168, 85, 247, 0.8)',
-                        'rgba(236, 72, 153, 0.8)',
-                        'rgba(14, 165, 233, 0.8)',
-                        'rgba(202, 138, 4, 0.8)',
-                        'rgba(16, 185, 129, 0.8)',
-                        'rgba(79, 70, 229, 0.8)'
-                    ];
-
-                    // 如果需要的颜色数量超过预定义的，重复使用
-                    const result = [];
-                    for (let i = 0; i < count; i++) {
-                        result.push(colors[i % colors.length]);
-                    }
-                    return result;
                 },
 
                 // 打开题目生成模态框
@@ -2507,7 +2249,7 @@
 
                                 if (status === 'error') {
                                     if (!this.lastWiringStatus || this.lastWiringStatus.wired_status !== 'error') {
-                                        alert('当前操作不规范，请重试。');
+                                        this.alertInPractice('当前操作不规范，请重试。');
                                     }
                                 } else {
                                     let actionText = '未知操作';
@@ -2539,7 +2281,7 @@
                             if (eventId) {
                                 this.lastProcessedWiringEventId = Math.max(this.lastProcessedWiringEventId, eventId);
                             }
-                            if (appended) {
+                            if (appended && !this.selectedExam) {
                                 this.autoGenerateQuestion();
                             }
                         })

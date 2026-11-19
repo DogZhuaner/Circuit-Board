@@ -66,13 +66,15 @@ TEACHER_WEB_CONFIG = {
 }
 
 DB_CONFIG = {
-    "host": _env("DB_HOST", "192.168.1.130"),
+    "host": _env("DB_HOST", "192.168.1.120"),
     "port": _env_int("DB_PORT", 3306),
     "user": _env("DB_USER", "admin"),
     "password": _env("DB_PASSWORD", "a214a214"),
     "database": _env("DB_NAME", "multivideo"),
     "auth_plugin": _env("DB_AUTH_PLUGIN", "mysql_native_password"),
 }
+
+EXAM_SCORE_KEY = _env("EXAM_SCORE_KEY", "")
 
 LOCAL_CLIENT_BASE = _env("LOCAL_CLIENT_BASE", "http://127.0.0.1:6001").rstrip("/")
 FACE_RECOGNITION_BASE = _env("FACE_RECOGNITION_BASE", "http://127.0.0.1:6001").rstrip("/")

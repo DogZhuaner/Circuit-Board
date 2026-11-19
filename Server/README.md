@@ -42,3 +42,18 @@ python server/app.py
 
 该目录现在是自包含服务器包，部署时只需拷贝 `server/` 整个目录。
 生产环境建议用 `gunicorn + nginx` 承载 `server/app.py`，并开启 HTTPS。
+
+## 考试接线回顾
+
+已有 MySQL 库执行 `migrations/001_exam_recording.sql` 后再更新服务。新导入的 `video_project.sql` 已包含这张表。服务器和网关沿用相同的 `EXAM_SCORE_KEY` 配置。服务器运行账户需有归档目录的读写权限。默认目录为 `Server/data/recordings/`，可用 `WIRING_ARCHIVE_DIR` 指向持久化数据盘。备份时同时保存 MySQL 和归档目录。
+
+学生交卷时，网页从本机取得完整 JSON 和网关签名，一并提交到原有成绩接口。服务器核验学号、考试、分数和文件摘要，将文件原子写入归档目录的 `<摘要前两位>/<SHA256>.json`，再在同一个 MySQL 事务中写入成绩和记录索引。重试沿用现有首份成绩。成绩详情按成绩行主键关联归档，历史成绩没有归档时显示“暂无记录”。
+
+查询某位考生在某次考试的成绩和记录可使用下列参数化查询。
+
+```sql
+SELECT r.id, r.student_no, r.test_id, r.test_score, w.recording_id, w.sha256
+FROM exam_result AS r
+LEFT JOIN exam_recording AS w ON w.result_id = r.id
+WHERE r.student_no = %s AND r.test_id = %s;
+```

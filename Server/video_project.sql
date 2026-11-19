@@ -37,6 +37,14 @@ CREATE TABLE `exam_result` (
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+DROP TABLE IF EXISTS exam_recording;
+CREATE TABLE IF NOT EXISTS exam_recording (
+    result_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    recording_id CHAR(32) CHARACTER SET ascii NOT NULL UNIQUE,
+    sha256 CHAR(64) CHARACTER SET ascii NOT NULL,
+    CONSTRAINT fk_recording_result FOREIGN KEY (result_id) REFERENCES exam_result(id)
+) ENGINE=InnoDB;
+
 --
 -- Dumping data for table `exam_result`
 --
@@ -44,8 +52,11 @@ CREATE TABLE `exam_result` (
 LOCK TABLES `exam_result` WRITE;
 /*!40000 ALTER TABLE `exam_result` DISABLE KEYS */;
 INSERT INTO `exam_result` VALUES (1,'DEMO-001','演示学员01','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',92.00,'','2026-11-07 11:46:18'),(2,'DEMO-002','演示学员02','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',78.00,'自锁、互锁','2026-11-07 11:46:18'),(3,'DEMO-003','演示学员03','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',65.00,'自锁、过载','2026-11-07 11:46:18'),(4,'DEMO-004','演示学员04','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',84.00,'互锁','2026-11-07 11:46:18'),(5,'DEMO-005','演示学员05','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',58.00,'自锁、互锁、过载','2026-11-07 11:46:18'),(6,'DEMO-006','演示学员06','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',73.00,'过载','2026-11-07 11:46:18'),(7,'DEMO-007','演示学员07','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',89.00,'互锁','2026-11-07 11:46:18'),(8,'DEMO-008','演示学员08','DEMO-202611-SELFLOCK','【演示】2026年11月 自锁与互锁控制',61.00,'自锁、过载','2026-11-07 11:46:18'),(9,'DEMO-001','演示学员01','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',88.00,'顺序','2026-11-07 11:46:18'),(10,'DEMO-002','演示学员02','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',71.00,'顺序、过载','2026-11-07 11:46:18'),(11,'DEMO-003','演示学员03','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',55.00,'顺序、过载','2026-11-07 11:46:18'),(12,'DEMO-004','演示学员04','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',94.00,'','2026-11-07 11:46:18'),(13,'DEMO-005','演示学员05','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',69.00,'过载','2026-11-07 11:46:18'),(14,'DEMO-006','演示学员06','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',76.00,'顺序','2026-11-07 11:46:18'),(15,'DEMO-007','演示学员07','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',82.00,'过载','2026-11-07 11:46:18'),(16,'DEMO-008','演示学员08','DEMO-202611-SEQUENCE','【演示】2026年11月 顺序控制与过载保护',63.00,'顺序、过载','2026-11-07 11:46:18');
+INSERT INTO exam_result (id,student_no,student_name,test_id,test_name,test_score,created_at) VALUES (17,'20251001','郁同学','DEMO-01','测试·基础接线',62.00,'2026-11-19 16:49:25');
 /*!40000 ALTER TABLE `exam_result` ENABLE KEYS */;
 UNLOCK TABLES;
+INSERT INTO exam_recording (result_id,recording_id,sha256) VALUES (17,'4ff91275465649358c85f2b805bbb211','d244522b676783d63beb499f2d48692994855de62e4e0e2a00f963ba9e2e768c');
+
 
 --
 -- Table structure for table `exam_test`

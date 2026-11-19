@@ -2,7 +2,7 @@ import os
 import sys
 import json
 from datetime import datetime
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import abort, Flask, render_template, jsonify, request, send_file
 from flask_socketio import SocketIO
 
 # 添加项目根目录到Python路径
@@ -13,6 +13,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 # 添加script目录到Python路径（服务器部署时可不存在）
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../script')))
 
+from itsdangerous import BadSignature
+from exam_results import exam_result
+from exam_access import ExamEntryError, exam_ticket, require_open_exam
 from global_config import Global_Config
 try:
     from script.detect_SwtichHand import start_hand_detection, stop_hand_detection
@@ -277,9 +280,57 @@ def index():
     student_id = request.args.get('student_id', '').strip()
     student_name = request.args.get('student_name', '').strip()
 
+    return render_student_page(student_id, student_name)
+
+
+def exam_identity() -> tuple:
+    try:
+        return exam_ticket.loads(request.args.get('ticket', ''))
+    except BadSignature:
+        raise ExamEntryError("请从考试入口登录后进入", 403) from None
+
+
+@app.get('/exam')
+def exam_page():
+    try:
+        exam_id, student_id, student_name = exam_identity()
+        exam = require_open_exam(exam_id)
+        score = exam_result(exam_id, student_id, student_name)
+    except ExamEntryError as error:
+        abort(error.status, description=str(error))
+    return render_student_page(student_id, student_name, exam, score), 200, {'Cache-Control': 'no-store'}
+
+
+@app.get('/api/exam/entry')
+def check_exam_entry():
+    try:
+        exam_id, student_id, student_name = exam_identity()
+        require_open_exam(exam_id)
+        score = exam_result(exam_id, student_id, student_name)
+    except ExamEntryError as error:
+        return jsonify(success=False, message=str(error)), error.status
+    return jsonify(success=True, submitted_score=score), 200, {'Cache-Control': 'no-store'}
+
+
+@app.post('/api/exam/result')
+def submit_exam_result():
+    try:
+        exam_id, student_id, student_name = exam_identity()
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or not isinstance(body.get('receipt'), str):
+            raise ExamEntryError("缺少网关的最终检查结果", 400)
+        score = exam_result(exam_id, student_id, student_name, submission=body)
+    except ExamEntryError as error:
+        return jsonify(success=False, message=str(error)), error.status
+    return jsonify(success=True, score=score), 200, {'Cache-Control': 'no-store'}
+
+
+def render_student_page(student_id, student_name, exam=None, submitted_score=None):
     return render_template(
         'index.html',
         local_client_base=LOCAL_CLIENT_BASE,
+        selected_exam=exam,
+        submitted_score=submitted_score,
         frontend_ollama_defaults=FRONTEND_OLLAMA_DEFAULTS,
         initial_student_info={
             'student_id': student_id,

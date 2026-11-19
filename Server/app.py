@@ -1,23 +1,26 @@
 import json
 import multiprocessing
+from collections import Counter
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import urlencode
 from urllib import request as urllib_request, error as urllib_error
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 from flask_cors import CORS
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.serving import run_simple
 
+from recording_archive import archive_path
 from db import MySQLConnector
+from exam_access import ExamEntryError, exam_ticket, open_exams, require_open_exam
 from teacher_webui.app import app as teacher_app
 from student_webui.app import app as student_app
 from tools.config import (
     FACE_LIBRARY_DIR,
     FACE_MATCH_THRESHOLD,
-    LOCAL_CLIENT_BASE,
     SERVER_CONFIG,
+    STUDENT_WEB_CONFIG,
     get_student_web_base,
     get_teacher_web_base,
 )
@@ -25,6 +28,7 @@ from tools.face_recognition_service import FaceRecognitionError, recognize_face_
 
 
 app = Flask(__name__, template_folder="templates")
+app.config.update(SECRET_KEY=STUDENT_WEB_CONFIG["secret_key"], SESSION_COOKIE_NAME="circuit_entry")
 CORS(app)
 
 
@@ -212,15 +216,117 @@ def find_user_identity(user_no):
         connector.close()
 
 
+def login_destination(user: dict) -> str:
+    session.clear()
+    if user["role"] == "teacher":
+        query = urlencode({"teacher_id": user["id"], "teacher_name": user["name"]})
+        return f"{get_teacher_web_base(request.host_url)}/?{query}"
+
+    session["student"] = {"id": user["id"], "name": user["name"]}
+    return url_for("student_entry")
+
+
+@app.errorhandler(ExamEntryError)
+def exam_login_error(error):
+    return jsonify(success=False, message=str(error)), error.status
+
+
+@app.get("/api/exams/open")
+def available_exams():
+    if "student" not in session:
+        return jsonify(success=False, message="请先登录学生账号"), 401
+    return jsonify(exams=open_exams()), 200, {"Cache-Control": "no-store"}
+
+
 @app.route("/", methods=["GET"])
 def login_page():
-    host_url = request.host_url.rstrip("/")
+    return render_template("login.html")
+
+
+@app.get("/entry")
+def student_entry():
+    student = session.get("student")
+    if not student:
+        return redirect(url_for("login_page"))
+
+    mode = request.args.get("mode")
+    student_base = get_student_web_base(request.host_url)
+    if mode == "practice":
+        query = urlencode({"student_id": student["id"], "student_name": student["name"]})
+        return redirect(f"{student_base}/?{query}")
+
+    notice = ""
+    status = 200
+    if mode == "exam":
+        try:
+            exam = require_open_exam(request.args.get("exam_id"))
+        except ExamEntryError as error:
+            notice, status = str(error), error.status
+        else:
+            ticket = exam_ticket.dumps([exam["id"], student["id"], student["name"]])
+            return redirect(f"{student_base}/exam?{urlencode({'ticket': ticket})}")
+
+    return render_template("entry.html", student=student, notice=notice), status, {"Cache-Control": "no-store"}
+
+
+@app.get("/scores")
+def student_scores():
+    student = session.get("student")
+    if not student:
+        return redirect(url_for("login_page"))
+
+    connector = MySQLConnector()
+    try:
+        rows = connector.query(
+            "SELECT r.id, r.test_id, r.test_name, r.test_score, r.knowledge, w.result_id "
+            "FROM exam_result r LEFT JOIN exam_recording w ON w.result_id=r.id "
+            "WHERE r.student_no=%s AND r.test_score IS NOT NULL ORDER BY r.created_at,r.id",
+            (student["id"],),
+        )
+    except RuntimeError:
+        app.logger.exception("读取学生成绩失败")
+        return render_template("scores.html", error="暂时无法读取成绩，请稍后重试。"), 503, {"Cache-Control": "no-store"}
+    finally:
+        connector.close()
+
+    scores = []
+    counts = Counter()
+    for row_id, exam_id, name, score, knowledge, review_id in rows:
+        scores.append({"id": row_id, "test_id": exam_id, "test_name": name, "score": float(score),
+                       "review_url": url_for("score_review", result_id=row_id) if review_id else None})
+        points = (knowledge or "").replace("，", ",").split(",")
+        counts.update(point.strip() for point in points if point.strip())
     return render_template(
-        "login.html",
-        local_client_base=LOCAL_CLIENT_BASE,
-        student_web_base=get_student_web_base(host_url),
-        teacher_web_base=get_teacher_web_base(host_url),
-    )
+        "scores.html", student=student, scores=scores,
+        knowledge=[{"name": name, "count": count} for name, count in counts.most_common()],
+        exam_count=len({row["test_id"] for row in scores}),
+        average=round(sum(row["score"] for row in scores) / len(scores), 2) if scores else "—",
+    ), 200, {"Cache-Control": "no-store"}
+
+
+@app.get("/scores/<int:result_id>/review")
+def score_review(result_id):
+    student = session.get("student")
+    if not student:
+        return redirect(url_for("login_page"))
+    db = MySQLConnector()
+    try:
+        rows = db.query(
+            "SELECT r.test_name,w.sha256 FROM exam_result r JOIN exam_recording w ON w.result_id=r.id "
+            "WHERE r.id=%s AND r.student_no=%s", (result_id, student["id"]))
+    except RuntimeError:
+        abort(503)
+    finally:
+        db.close()
+    if not rows:
+        abort(404)
+    name, digest = rows[0]
+    try:
+        record = json.loads(archive_path(digest).read_bytes())
+    except (OSError, ValueError):
+        app.logger.exception("读取成绩 %s 的接线归档失败", result_id)
+        return "暂时无法读取接线记录，请稍后重试。", 503, {"Cache-Control": "no-store"}
+    return render_template("review.html", name=name, record=record), 200, {"Cache-Control": "no-store"}
 
 
 @app.route("/health", methods=["GET"])
@@ -255,6 +361,8 @@ def auth_login():
         data.get("password"),
         data.get("identity"),
     )
+    if result.get("success"):
+        result["redirect"] = login_destination(result["user"])
     return jsonify(result), status
 
 
@@ -282,18 +390,7 @@ def legacy_login():
     if not result.get("success"):
         return jsonify(result), status
 
-    user = result.get("user", {})
-    role = user.get("role")
-    user_id = quote(str(user.get("id", "")))
-    user_name = quote(str(user.get("name", "")))
-    host_url = request.host_url.rstrip("/")
-
-    if role == "teacher":
-        redirect = f"{get_teacher_web_base(host_url)}/?teacher_id={user_id}&teacher_name={user_name}"
-    else:
-        redirect = f"{get_student_web_base(host_url)}/?student_id={user_id}&student_name={user_name}"
-
-    return jsonify({"success": True, "message": result.get("message"), "redirect": redirect})
+    return jsonify(success=True, message=result["message"], redirect=login_destination(result["user"]))
 
 
 @app.route("/register", methods=["POST"])
@@ -345,19 +442,13 @@ def recognize_face():
             "threshold": match.get("threshold"),
         }), 404
 
-    host_url = request.host_url.rstrip("/")
-    if user["role"] == "teacher":
-        redirect = f"{get_teacher_web_base(host_url)}/?teacher_id={quote(user['id'])}&teacher_name={quote(str(user['name']))}"
-    else:
-        redirect = f"{get_student_web_base(host_url)}/?student_id={quote(user['id'])}&student_name={quote(str(user['name']))}"
-
     return jsonify({
         "success": True,
         "message": "识别成功",
         "emp_id": user["id"],
         "role": user["role"],
         "name": user["name"],
-        "redirect": redirect,
+        "redirect": login_destination(user),
         "matched_filename": match.get("filename"),
         "distance": match.get("distance"),
         "similarity": match.get("similarity"),

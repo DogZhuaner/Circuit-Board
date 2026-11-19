@@ -19,7 +19,7 @@ from tools.Python.MvImport.MvCameraControl_class import *
 import numpy as np
 from script.calculate_score import evaluate_pairs
 from script.deal_StmResult import generate_by_name_json
-from script.serial_tools import STM32Tool
+from script.serial_tools import STM32Tool, serialized_capture
 from script.update_pairs import diff_json_pairs
 
 # ========= 你原先程序里的可配置项 =========
@@ -57,12 +57,14 @@ class YoloDetector:
             model_path: str = MODEL_PATH,
             conf_thres: float = CONF_THRESHOLD,
             roi: tuple = (x1_s, y1_s, x2_s, y2_s),
-            on_update: Optional[Callable[[VisionStatus], None]] = None
+            on_update: Optional[Callable[[VisionStatus], None]] = None,
+            on_snapshot: Optional[Callable] = None
     ):
         self.model = YOLO(model_path)
         self.conf_thres = conf_thres
         self.roi = roi
         self.on_update = on_update
+        self.on_snapshot = on_snapshot
 
         self._cap = None
         self._frame = None
@@ -126,6 +128,7 @@ class YoloDetector:
             Global_Config.current_B = ""
             Global_Config.wired_status = "no_change"
 
+    @serialized_capture
     def _read_stm32_and_score(self):
         print("[INFO] 手掌拿开，开始读取 STM32 接线矩阵...")
         tool = STM32Tool()
@@ -165,6 +168,8 @@ class YoloDetector:
                 str(Global_Config.test_rule),
                 print_console=True,
             )
+            if self.on_snapshot is not None:
+                self.on_snapshot(named_result, score_result)
             self._update_score_state(named_result, score_result, add_pairs, undo_pairs)
             print(f"[INFO] 新增接线对：{add_pairs}")
             print(f"[INFO] 撤去接线对：{undo_pairs}")
@@ -420,7 +425,7 @@ class YoloDetector:
 _detector_singleton: Optional[YoloDetector] = None
 
 
-def start_hand_detection(blocking: bool = False):
+def start_hand_detection(blocking: bool = False, on_snapshot: Optional[Callable] = None):
     """
     被 app-backup.py 的 DetectionManager 调用：
       detector = start_hand_detection(blocking=False)
@@ -428,14 +433,17 @@ def start_hand_detection(blocking: bool = False):
     """
     global _detector_singleton
     if _detector_singleton is None:
-        _detector_singleton = YoloDetector()
-        detection_thread = threading.Thread(target=_detector_singleton.start, args=(False,))
-        detection_thread.start()
-    return _detector_singleton, detection_thread
+        _detector_singleton = YoloDetector(on_snapshot=on_snapshot)
+        _detector_singleton.start(blocking=False)
+    return _detector_singleton, _detector_singleton._t_loop
+
 
 
 def stop_hand_detection():
     global _detector_singleton
     if _detector_singleton is not None:
         _detector_singleton.stop_detection()
+        if any(thread and thread.is_alive() for thread in
+               (_detector_singleton._t_cap, _detector_singleton._t_loop)):
+            raise RuntimeError("检测线程尚未退出，请重试停止")
         _detector_singleton = None

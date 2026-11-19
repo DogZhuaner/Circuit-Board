@@ -11,65 +11,8 @@
   <script src="/static/js/socket.io.min.js"></script>
   <script src="/static/js/vue.global.js"></script>
 
+  <link rel="stylesheet" href="/static/css/auth.css">
   <style>
-    :root {
-      --primary-color: #4f46e5;
-      --primary-dark: #3730a3;
-      --success-color: #10b981;
-      --success-dark: #059669;
-      --danger-color: #ef4444;
-      --danger-dark: #dc2626;
-      --warning-color: #f59e0b;
-      --warning-dark: #d97706;
-      --info-color: #3b82f6;
-      --light-bg: #f8fafc;
-      --dark-bg: #1e293b;
-      --border-color: #e2e8f0;
-      --text-primary: #1e293b;
-      --text-secondary: #64748b;
-      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    }
-
-    body {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-      min-height: 100vh;
-      font-family: 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      margin: 0;
-    }
-
-    .login-container {
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 24px;
-      box-shadow: var(--shadow-xl);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      padding: 40px;
-      max-width: 500px;
-      width: 100%;
-      animation: fadeIn 0.5s ease-in-out;
-    }
-
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px);} to { opacity:1; transform: translateY(0);} }
-
-    .login-title {
-      text-align: center;
-      margin-bottom: 30px;
-      background: linear-gradient(135deg, var(--primary-color), var(--info-color));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      font-size: 2.2rem;
-      font-weight: 700;
-    }
-
     .form-container { display: flex; flex-direction: column; gap: 20px; }
     .form-group { display: flex; flex-direction: column; gap: 8px; }
     .form-group label { font-weight: 600; color: var(--text-primary); }
@@ -83,17 +26,6 @@
       background: rgba(255, 255, 255, 0.8);
     }
     .form-control:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(79,70,229,.1); outline: none; }
-
-    .btn-custom {
-      border-radius: 16px; padding: 14px 32px; font-weight: 600; font-size: 1rem;
-      transition: all .3s cubic-bezier(.4,0,.2,1); border: none; position: relative; overflow: hidden; cursor: pointer;
-    }
-    .btn-login { background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: #fff; box-shadow: 0 4px 15px rgba(79,70,229,.4); }
-    .btn-login:hover { background: linear-gradient(135deg, var(--primary-dark), var(--primary-color)); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(79,70,229,.6); }
-
-    .btn-face-detection { background: linear-gradient(135deg, var(--success-color), var(--success-dark)); color: #fff; box-shadow: 0 4px 15px rgba(16,185,129,.4); }
-    .btn-face-detection:hover { background: linear-gradient(135deg, var(--success-dark), var(--success-color)); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(16,185,129,.6); }
-    .btn-face-detection:disabled { background: linear-gradient(135deg, #94a3b8, #64748b); transform: none; box-shadow:none; cursor:not-allowed; }
 
     .login-tabs { display:flex; border-bottom:2px solid var(--border-color); margin-bottom:25px; }
     .login-tab { flex:1; text-align:center; padding:12px 20px; cursor:pointer; transition: all .3s ease; font-weight:600; color:var(--text-secondary); position:relative; }
@@ -238,7 +170,7 @@
 <body>
   <div id="app" class="login-container">
     <h1 class="login-title">电路配盘接线系统</h1>
-    <div class="login" v-if="!showRegister">
+    <div class="login">
       <!-- 登录方式切换 -->
       <div class="login-tabs">
         <div class="login-tab" :class="{ active: loginMethod === 'password' }" @click="switchLoginMethod('password')">
@@ -252,19 +184,16 @@
       <!-- 账号密码登录 -->
       <div v-if="loginMethod === 'password'" class="login-content fade-in">
         <div class="form-container">
-          <!-- 身份选择（仅密码登录需要） -->
           <div class="form-group">
             <label>选择身份</label>
             <div class="identity-selector">
-              <div class="identity-option" :class="{ selected: selectedIdentity === 'student' }" @click="selectIdentity('student')">
-                <i class="bi bi-person-circle" style="font-size:1.5rem; display:block; margin-bottom:8px;"></i> 学生
-              </div>
-              <div class="identity-option" :class="{ selected: selectedIdentity === 'teacher' }" @click="selectIdentity('teacher')">
-                <i class="bi bi-person-badge" style="font-size:1.5rem; display:block; margin-bottom:8px;"></i> 教师
-              </div>
+              <button type="button" v-for="role in roles" :key="role.id" class="identity-option"
+                      :class="{ selected: formData.identity === role.id }" :aria-pressed="formData.identity === role.id"
+                      @click="formData.identity = role.id">
+                <i aria-hidden="true" class="bi d-block mb-1" :class="role.icon"></i><span v-text="role.name"></span>
+              </button>
             </div>
           </div>
-
           <div class="form-group">
             <label for="username">用户名</label>
             <input id="username" class="form-control" type="text" placeholder="请输入用户名" v-model="formData.username" :disabled="isLoading">
@@ -279,10 +208,6 @@
             <span v-if="isLoading"><i class="spinner"></i> 登录中...</span>
             <span v-else>账号密码登录</span>
           </button>
-        </div>
-        <!-- 提示仅在密码登录且未选身份时出现 -->
-        <div v-if="loginMethod === 'password' && !formData.identity" class="login-footer">
-          <p style="color: var(--warning-color);">请先选择登录身份</p>
         </div>
       </div>
 
@@ -459,15 +384,12 @@
     const API_LOGIN = `${API_BASE}/login`;
     // 人脸识别接口
     const API_RECOGNIZE = `${API_BASE}/recognize_face`;
-    const STUDENT_WEB_BASE = {{ student_web_base|tojson }};
-    const TEACHER_WEB_BASE = {{ teacher_web_base|tojson }};
-
     const app = createApp({
       data() {
         return {
           // 表单
-          formData: { username: '', password: '', identity: '' },
-          selectedIdentity: '',
+          formData: { username: '', password: '', identity: 'student' },
+          roles: [{ id: 'student', name: '学生', icon: 'bi-person-circle' }, { id: 'teacher', name: '教师', icon: 'bi-person-badge' }],
           isLoading: false,
 
           // 注册相关数据
@@ -553,12 +475,6 @@
         // ... 原来的绘制逻辑 ...
       },
 
-
-        // 身份选择（仅密码登录使用）
-        selectIdentity(identity) {
-          this.selectedIdentity = identity;
-          this.formData.identity = identity;
-        },
 
         // 账号密码登录
         submitLogin() {
@@ -678,27 +594,12 @@
             this.faceDetectionMessage = data.message;
 
             if (data && data.success) {
-              // 建议后端一并返回 role：student / teacher
-              const { emp_id, role, name } = data;
-              let redirectUrl;
-              const stuUrl = STUDENT_WEB_BASE;
-              const teaUrl = TEACHER_WEB_BASE;
-
-              if (role === 'teacher') {
-                  redirectUrl = `${teaUrl}/?teacher_id=${encodeURIComponent(emp_id)}&teacher_name=${encodeURIComponent(name)}`;
-              } else if (role === 'student') {
-                  redirectUrl = `${stuUrl}/?student_id=${encodeURIComponent(emp_id)}&student_name=${encodeURIComponent(name)}`;
-              } else {
-                  this.failAndCooldown('识别成功但用户角色未知');
-                  return;
-              }
-
               this.faceDetectionStatus = 'detected';
               this.faceDetectionMessage = `识别成功！工号：${data.emp_id || ''}，即将跳转...`;
               this.stopCamera();
               this.isProcessing = false;
 
-              setTimeout(() => { window.location.href = redirectUrl; }, 1500);
+              setTimeout(() => { window.location.href = data.redirect; }, 1500);
             } else {
               this.failAndCooldown((data && data.message) || '未匹配到人脸');
             }

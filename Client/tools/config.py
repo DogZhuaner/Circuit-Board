@@ -1,7 +1,7 @@
 #config.py
 
 DB_CONFIG = {
-    'host': '192.168.1.104',
+    'host': '192.168.1.120',
     'port': 3306,
     'user': 'admin',
     'password': 'a214a214',

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -5,17 +6,20 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 import requests
-from flask import Flask, jsonify, request
+from itsdangerous import URLSafeSerializer
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from requests.adapters import HTTPAdapter, Retry
 
 from global_config import Global_Config
-from script.serial_tools import STM32Tool
+from script.serial_tools import STM32Tool, serialized_capture
+from script.wiring_recorder import WiringRecorder
 
 
 app = Flask(__name__)
@@ -107,6 +111,54 @@ state_lock = threading.Lock()
 active_session_id: Optional[str] = None
 session_states: Dict[str, Dict[str, Any]] = {}
 EMPTY_WIRING_RESULT: Dict[str, Any] = {"pairs": [], "connected": []}
+recording_store = None
+recording_store_lock = threading.Lock()
+lifecycle_lock = threading.RLock()
+active_recording_id: Optional[str] = None
+recording_error: Optional[str] = None
+
+
+def get_recording_store() -> WiringRecorder:
+    global recording_store
+    with recording_store_lock:
+        if recording_store is None:
+            path = Path(config_value("recordings_db", "data/recordings/wiring_history.sqlite3",
+                                     "WIRING_RECORDINGS_DB"))
+            if not path.is_absolute():
+                path = Path(__file__).resolve().parent / path
+            recording_store = WiringRecorder(path, recover=True)
+        return recording_store
+
+
+def record_capture(recording_id: str, named_result: Dict[str, Any],
+                   score_result: Dict[str, Any]) -> None:
+    global recording_error
+    try:
+        get_recording_store().append_snapshot(
+            recording_id, named_result.get("pairs", []), score_result.get("total_score", 0))
+    except Exception as exc:
+        recording_error = str(exc)
+        raise
+
+
+def begin_recording(scoring: Dict[str, Any]) -> str:
+    from script.deal_StmResult import load_labels
+
+    metadata = compact_dict(runtime_context.copy())
+    metadata["rule_snapshot"] = json.loads(Path(Global_Config.test_rule).read_text(encoding="utf-8"))
+    metadata["terminal_labels"] = load_labels(Global_Config.label_csv)
+    return get_recording_store().begin(
+        metadata, scoring["named_result"].get("pairs", []),
+        scoring["score_result"].get("total_score", 0))
+
+
+def serialized_lifecycle(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        with lifecycle_lock:
+            return function(*args, **kwargs)
+    return wrapped
+
 
 
 def iso_now() -> str:
@@ -586,6 +638,8 @@ def build_wiring_status(extra: Optional[Dict[str, Any]] = None, session_id: Opti
         "context": compact_dict(runtime_context.copy()),
         "detection": {
             "running": is_detector_running(),
+            "recording_id": active_recording_id,
+            "recording_error": recording_error,
             "started_at": detection_started_at,
         },
         "timestamp": latest_event["timestamp"] or iso_now(),
@@ -666,6 +720,7 @@ def post_to_server(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+@serialized_capture
 def maybe_score_stm32_result(connections: Any) -> Dict[str, Any]:
     from script.calculate_score import evaluate_pairs
     from script.deal_StmResult import generate_by_name_json
@@ -715,6 +770,9 @@ def maybe_score_stm32_result(connections: Any) -> Dict[str, Any]:
         }
         for pair in undo_pairs
     ]
+
+    if active_recording_id:
+        record_capture(active_recording_id, named_result, score_result)
 
     Global_Config.total_score = score_result.get("total_score", Global_Config.total_score)
     Global_Config.current_session_score = Global_Config.total_score
@@ -776,18 +834,18 @@ def recognize_face_not_supported():
 
 
 @app.route("/api/yolo/start", methods=["POST"])
+@serialized_lifecycle
 def start_yolo():
-    global detector, detection_thread, detection_started_at, active_session_id
+    global detector, detection_thread, detection_started_at, active_session_id, active_recording_id, recording_error
 
     payload = request.get_json(silent=True) or {}
     if not payload.get("session_id"):
         payload["session_id"] = new_session_id()
     if payload.get("rule_file") and not payload.get("rule_filename"):
         payload["rule_filename"] = payload["rule_file"]
-    update_runtime_context(payload)
     session_id = get_request_session_id(payload)
 
-    if is_detector_running():
+    if active_recording_id or is_detector_running():
         if active_session_id == session_id:
             message = "检测已经在运行"
         else:
@@ -803,7 +861,9 @@ def start_yolo():
             }
         )
 
+    update_runtime_context(payload)
     stm_started = False
+    started_recording_id = None
     try:
         matrix_tool = stm_tool_from_payload(payload)
         stm_started = matrix_tool.start_detection_mode()
@@ -843,8 +903,12 @@ def start_yolo():
         initial_scoring = maybe_score_stm32_result(initial_connections)
         initial_event = sync_gateway_event_from_global(session_id)
 
+        active_recording_id = begin_recording(initial_scoring)
+        started_recording_id = active_recording_id
+        recording_error = None
         module = load_detection_module()
-        detector, detection_thread = module.start_hand_detection()
+        detector, detection_thread = module.start_hand_detection(
+            on_snapshot=lambda named, score: record_capture(started_recording_id, named, score))
         detection_started_at = iso_now()
         with state_lock:
             session_states[session_id]["running"] = True
@@ -859,6 +923,7 @@ def start_yolo():
                     "initial_query_status": matrix_tool.last_query_status,
                     "initial_connections_count": len(initial_connections),
                 },
+                "recording_id": active_recording_id,
                 "initial_scoring": initial_scoring,
                 "initial_event": initial_event,
                 "context": compact_dict(runtime_context.copy()),
@@ -866,6 +931,10 @@ def start_yolo():
             }
         )
     except Exception as exc:
+        if started_recording_id:
+            get_recording_store().finish(started_recording_id, "failed")
+        active_recording_id = None
+        recording_error = str(exc)
         detector = None
         detection_thread = None
         detection_started_at = None
@@ -887,25 +956,13 @@ def start_yolo():
 
 
 @app.route("/api/yolo/stop", methods=["POST"])
+@serialized_lifecycle
 def stop_yolo():
-    global detector, detection_thread, detection_started_at, active_session_id
+    global detector, detection_thread, detection_started_at, active_session_id, active_recording_id, recording_error
 
     payload = request.get_json(silent=True) or {}
-    update_runtime_context(payload)
     session_id = get_request_session_id(payload)
     session_state = get_or_create_session_state(session_id)
-
-    if detector is None and not is_thread_alive(detection_thread):
-        session_state["running"] = False
-        return jsonify(
-            {
-                "success": True,
-                "message": "检测已停止",
-                "session_id": session_id,
-                "score": session_state.get("score", 0),
-                "running": False,
-            }
-        )
 
     if active_session_id and session_id != active_session_id:
         return jsonify(
@@ -918,8 +975,30 @@ def stop_yolo():
             }
         ), 409
 
+    if active_recording_id is None and detector is None and not is_thread_alive(detection_thread):
+        session_state["running"] = False
+        return jsonify(
+            {
+                "success": True,
+                "message": "检测已停止",
+                "session_id": session_id,
+                "score": session_state.get("score", 0),
+                "running": False,
+            }
+        )
+
     try:
+        module = load_detection_module()
+        module.stop_hand_detection()
+        if is_thread_alive(detection_thread):
+            detection_thread.join(timeout=5)
+        if is_thread_alive(detection_thread):
+            raise RuntimeError("检测启动线程尚未退出，请重试停止")
         matrix_tool = stm_tool_from_payload(payload)
+        final_connections = matrix_tool.query_and_parse()
+        final_capture_status = matrix_tool.last_query_status
+        if final_capture_status == "ok":
+            maybe_score_stm32_result(final_connections)
         stm_stopped = matrix_tool.stop_detection_mode()
         if not stm_stopped:
             return jsonify(
@@ -933,10 +1012,11 @@ def stop_yolo():
             ), 500
 
         latest_event = sync_gateway_event_from_global(session_id)
-        module = load_detection_module()
-        module.stop_hand_detection()
-        if is_thread_alive(detection_thread):
-            detection_thread.join(timeout=5)
+        finished_recording_id = active_recording_id
+        if finished_recording_id:
+            get_recording_store().finish(
+                finished_recording_id, "completed" if final_capture_status == "ok" and not recording_error else "interrupted")
+        active_recording_id = None
         detector = None
         detection_thread = None
         detection_started_at = None
@@ -949,7 +1029,9 @@ def stop_yolo():
             "session_id": session_id,
             "score": latest_event.get("score", session_state.get("score", 0)),
             "running": False,
-            "stm32": {"detection_mode": "stopped"},
+            "recording_id": finished_recording_id,
+            "recording_error": recording_error,
+            "stm32": {"detection_mode": "stopped", "final_query_status": final_capture_status},
         }
         if payload.get("submit_exam_result"):
             report_payload = build_exam_report_payload(payload.get("exam_result") or {})
@@ -969,6 +1051,8 @@ def yolo_status():
             "session_id": session_id,
             "running": is_detector_running(),
             "session_running": bool(session_state.get("running")),
+            "recording_id": active_recording_id,
+            "recording_error": recording_error,
             "started_at": detection_started_at,
             "active_session_id": active_session_id,
             "context": compact_dict(runtime_context.copy()),
@@ -1169,6 +1253,8 @@ def stm_stop():
 
 
 @app.route("/api/stm/query", methods=["GET"])
+@serialized_lifecycle
+@serialized_capture
 def stm_query():
     port = request.args.get("port")
     baudrate = request.args.get("baudrate", type=int)
@@ -1178,8 +1264,11 @@ def stm_query():
     tool = stm_tool(port=port, baudrate=baudrate, timeout=timeout)
     try:
         connections = tool.query_and_parse()
+        if tool.last_query_status != "ok":
+            return jsonify({"success": False, "message": "STM32采集无效",
+                            "query_status": tool.last_query_status}), 502
         response: Dict[str, Any] = {"success": True, "connections": connections, "count": len(connections)}
-        if should_score:
+        if should_score or active_recording_id:
             response["scoring"] = maybe_score_stm32_result(connections)
             response["status"] = build_wiring_status()
         if should_report:
@@ -1188,6 +1277,76 @@ def stm_query():
         return jsonify(response)
     except Exception as exc:
         return jsonify({"success": False, "message": f"查询失败: {exc}"}), 500
+
+
+@app.route("/api/recordings", methods=["GET"])
+def list_recordings():
+    try:
+        limit = int(request.args.get("limit", 50))
+        offset = int(request.args.get("offset", 0))
+        if not 1 <= limit <= 200 or offset < 0:
+            raise ValueError("limit 应为 1–200，offset 应大于等于 0")
+        return jsonify({"success": True, "recordings": get_recording_store().list_recordings(limit, offset),
+                        "active_recording_id": active_recording_id, "recording_error": recording_error})
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+
+@app.route("/api/recordings/<recording_id>", methods=["GET"])
+def read_recording(recording_id: str):
+    try:
+        after_seq = int(request.args.get("after_seq", 0))
+        limit = int(request.args.get("limit", 500))
+        if after_seq < 0 or not 1 <= limit <= 2000:
+            raise ValueError("after_seq 应大于等于 0，limit 应为 1–2000")
+        return jsonify({"success": True, **get_recording_store().read(recording_id, after_seq, limit)})
+    except KeyError:
+        return jsonify({"success": False, "message": "接线记录不存在"}), 404
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+
+@app.post("/api/recordings/<recording_id>/exam-receipt")
+def exam_receipt(recording_id):
+    key = config_value("exam_score_key", "", "EXAM_SCORE_KEY")
+    if not key:
+        key_file = Path(__file__).with_name("exam-score.key")
+        if key_file.is_file():
+            key = key_file.read_text(encoding="utf-8").strip()
+    if not key:
+        return jsonify(success=False, message="本机网关尚未配置考试成绩签名密钥"), 503
+    try:
+        include_archive = request.args.get("archive") == "1"
+        record = get_recording_store().read(recording_id, limit=None if include_archive else 0)
+    except KeyError:
+        return jsonify(success=False, message="未找到本次检测记录"), 404
+    if record["status"] != "completed":
+        return jsonify(success=False, message="缺少完整的最终接线检查，请重新检测后提交"), 409
+    metadata = record["metadata"]
+    if not metadata.get("test_id") or not metadata.get("student_no"):
+        return jsonify(success=False, message="该记录不属于考试"), 400
+    proof = {
+        "student_no": metadata["student_no"], "exam_id": metadata["test_id"],
+        "recording_id": recording_id, "score": record["latest_state"]["score"],
+    }
+    response = {"success": True}
+    if include_archive:
+        archive = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+        proof["archive_sha256"] = hashlib.sha256(archive.encode("utf-8")).hexdigest()
+        response["archive"] = archive
+    receipt = URLSafeSerializer(key, salt="wiring-exam-score-v1").dumps(proof)
+    return jsonify(receipt=receipt, **response)
+
+
+@app.route("/api/recordings/<recording_id>/export", methods=["GET"])
+def export_recording(recording_id: str):
+    try:
+        data = get_recording_store().read(recording_id)
+    except KeyError:
+        return jsonify({"success": False, "message": "接线记录不存在"}), 404
+    # The identifier is generated locally. Use that verified value in the filename.
+    return Response(json.dumps(data, ensure_ascii=False, indent=2), mimetype="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="wiring-{data["recording_id"]}.json"'})
 
 
 if __name__ == "__main__":

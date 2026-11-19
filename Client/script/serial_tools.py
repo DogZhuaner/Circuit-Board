@@ -1,4 +1,18 @@
 import time
+import threading
+from functools import wraps
+
+
+capture_lock = threading.RLock()
+
+
+def serialized_capture(function):
+    """Keep a hardware snapshot and its scoring/recording in acquisition order."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        with capture_lock:
+            return function(*args, **kwargs)
+    return wrapped
 
 
 def load_pyserial():

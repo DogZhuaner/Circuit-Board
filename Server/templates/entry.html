@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>入口选择 · 电路配盘接线系统</title>
+  <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/css/bootstrap-icons.css">
+  <link rel="stylesheet" href="/static/css/auth.css">
+  <style>
+    .login-container { padding: clamp(1.5rem, 6vw, 2.5rem); }
+    .login-title { margin-bottom: .5rem; font-size: clamp(1.55rem, 6vw, 2.2rem); }
+    .entry-hint, #exam-status { color: var(--text-secondary); text-align: center; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .actions .btn-custom { padding: 14px 12px; text-align: center; text-decoration: none; }
+    .actions .btn-login:disabled { background: var(--border-color); color: #475569; box-shadow: none; transform: none; cursor: not-allowed; }
+    .scores-link { display: block; text-align: center; padding: .75rem; border: 1px solid var(--border-color); border-radius: 16px; color: var(--primary-dark); text-decoration: none; font-weight: 600; }
+    .scores-link:hover { background: var(--light-bg); }
+    .form-select:focus, .actions :focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main class="login-container">
+    <h1 class="login-title">{{ student.name }}{% if not student.name.endswith('同学') %}同学{% endif %}，你好！</h1>
+    <p class="entry-hint mb-4">请选择考试、练习或查看成绩</p>
+    {% if notice %}<p class="alert alert-warning">{{ notice }}</p>{% endif %}
+    <form method="get" action="{{ url_for('student_entry') }}">
+      <input type="hidden" name="mode" value="exam">
+      <div id="exam-list" class="mb-3" hidden>
+        <label class="form-label" for="exam-id">选择考试</label>
+        <select class="form-select" id="exam-id" name="exam_id"></select>
+      </div>
+      <div class="actions">
+        <button type="submit" id="exam-button" class="btn-custom btn-login" disabled>
+          <i class="bi bi-pencil-square me-1"></i>考试
+        </button>
+        <a class="btn-custom btn-face-detection" href="{{ url_for('student_entry', mode='practice') }}"><i class="bi bi-tools me-1"></i>练习</a>
+      </div>
+      <p id="exam-status" role="status" class="mt-3">正在查询可参加的考试…</p>
+    </form>
+    <a class="scores-link" href="{{ url_for('student_scores') }}"><i class="bi bi-graph-up me-1" aria-hidden="true"></i>成绩数据可视化</a>
+  </main>
+  <script>
+    const select = document.getElementById('exam-id');
+    const button = document.getElementById('exam-button');
+    const status = document.getElementById('exam-status');
+    const list = document.getElementById('exam-list');
+    let checking = false;
+
+    async function refreshExams() {
+      if (checking) return;
+      checking = true;
+      try {
+        const response = await fetch('/api/exams/open', { cache: 'no-store' });
+        if (!response.ok) throw new Error();
+        const { exams } = await response.json();
+        const previous = select.value;
+        select.replaceChildren(...exams.map(exam => {
+          const label = exam.deadline === '9999-12-31 23:59:59' ? exam.name : exam.name + ' · 截至 ' + exam.deadline;
+          return new Option(label, exam.id);
+        }));
+        if (exams.some(exam => String(exam.id) === previous)) select.value = previous;
+        list.hidden = exams.length === 0;
+        button.disabled = exams.length === 0;
+        status.textContent = exams.length ? '当前可参加 ' + exams.length + ' 场考试' : '当前没有可参加的考试';
+      } catch {
+        button.disabled = true;
+        list.hidden = true;
+        status.textContent = '暂时无法查询考试，稍后会自动重试';
+      } finally {
+        checking = false;
+      }
+    }
+    window.addEventListener('pageshow', refreshExams);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshExams(); });
+    setInterval(refreshExams, 15000);
+  </script>
+</body>
+</html>
