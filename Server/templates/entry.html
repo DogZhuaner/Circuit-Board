@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/css/auth.css">
   <style>
     .login-container { padding: clamp(1.5rem, 6vw, 2.5rem); }
+    .logout-form { display: flex; justify-content: flex-end; margin-bottom: .75rem; }
     .login-title { margin-bottom: .5rem; font-size: clamp(1.55rem, 6vw, 2.2rem); }
     .entry-hint, #exam-status { color: var(--text-secondary); text-align: center; }
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -18,9 +19,13 @@
     .scores-link:hover { background: var(--light-bg); }
     .form-select:focus, .actions :focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
   </style>
+<script src="/static/js/session-navigation.js" defer></script>
 </head>
 <body>
   <main class="login-container">
+    <form class="logout-form" method="post" action="{{ url_for('logout') }}">
+      <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-box-arrow-right me-1" aria-hidden="true"></i>退出登录</button>
+    </form>
     <h1 class="login-title">{{ student.name }}{% if not student.name.endswith('同学') %}同学{% endif %}，你好！</h1>
     <p class="entry-hint mb-4">请选择考试、练习或查看成绩</p>
     {% if notice %}<p class="alert alert-warning">{{ notice }}</p>{% endif %}
@@ -52,6 +57,7 @@
       checking = true;
       try {
         const response = await fetch('/api/exams/open', { cache: 'no-store' });
+        if (response.status === 401) { location.replace({{ url_for('login_page')|tojson }}); return; }
         if (!response.ok) throw new Error();
         const { exams } = await response.json();
         const previous = select.value;

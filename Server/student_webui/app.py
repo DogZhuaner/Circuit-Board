@@ -2,9 +2,10 @@ import os
 import sys
 import json
 import re
+from contextlib import closing
 from ipaddress import IPv6Address
 from datetime import datetime
-from flask import abort, Flask, render_template, jsonify, request, send_file, session
+from flask import abort, Flask, render_template, jsonify, redirect, request, send_file, session
 from flask_socketio import SocketIO
 
 # 添加项目根目录到Python路径
@@ -16,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../script')))
 
 from itsdangerous import BadSignature
+from db import MySQLConnector as StudentDatabase
 from exam_results import exam_result
 from exam_access import ExamEntryError, exam_ticket, exam_rule_ticket, require_open_exam
 from global_config import Global_Config
@@ -29,6 +31,7 @@ except Exception:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../tools')))
 from tools.connector import MySQLConnector
 from tools.config import (
+    portal_login_url,
     FRONTEND_OLLAMA_DEFAULTS,
     LOCAL_CLIENT_BASE as CONFIG_LOCAL_CLIENT_BASE,
     OLLAMA_CHAT_DEFAULTS,
@@ -279,10 +282,20 @@ def get_detection_status():
 @app.route('/')
 def index():
     """主页面"""
-    student_id = request.args.get('student_id', '').strip()
-    student_name = request.args.get('student_name', '').strip()
-
-    return render_student_page(student_id, student_name)
+    student = session.get('student')
+    if not student:
+        return redirect(portal_login_url(request.host_url, request.script_root))
+    try:
+        with closing(StudentDatabase()) as db:
+            rows = db.query(
+                'SELECT DISTINCT c.name FROM class_student m JOIN teaching_class c ON c.id=m.class_id '
+                'WHERE m.student_no=%s ORDER BY c.name', (student['id'],)
+            )
+        class_label = '、'.join(name for name, in rows) or '暂未分班'
+    except RuntimeError:
+        app.logger.exception('读取练习页学生班级失败')
+        class_label = '暂时无法读取'
+    return render_student_page(student['id'], student['name'], class_label=class_label), 200, {'Cache-Control': 'no-store'}
 
 
 def exam_identity() -> tuple:
@@ -331,7 +344,7 @@ def submit_exam_result():
     return jsonify(success=True, score=score), 200, {'Cache-Control': 'no-store'}
 
 
-def render_student_page(student_id, student_name, exam=None, submitted_score=None):
+def render_student_page(student_id, student_name, exam=None, submitted_score=None, *, class_label=None):
     return render_template(
         'index.html',
         local_client_base=LOCAL_CLIENT_BASE,
@@ -340,7 +353,8 @@ def render_student_page(student_id, student_name, exam=None, submitted_score=Non
         frontend_ollama_defaults=FRONTEND_OLLAMA_DEFAULTS,
         initial_student_info={
             'student_id': student_id,
-            'student_name': student_name
+            'student_name': student_name,
+            'class_label': class_label,
         },
     )
 

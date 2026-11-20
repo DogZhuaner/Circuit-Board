@@ -139,10 +139,18 @@
             grid-template-rows: clamp(20rem, 55vh, 30rem) clamp(15rem, 38vh, 22rem);
         }
 
+        .practice-layout .card-custom {
+            overflow: hidden;
+        }
+
+        .practice-layout .card-header h5 {
+            display: flex;
+            align-items: center;
+        }
+
         .practice-panels > .card {
             min-height: 0;
             min-width: 0;
-            overflow: hidden;
         }
 
         .practice-panels > .card > .card-body {
@@ -152,7 +160,8 @@
             overflow-wrap: anywhere;
         }
 
-        .practice-layout .card-custom:hover {
+        .practice-layout .card-custom:hover,
+        .practice-student-card:hover {
             transform: none;
         }
 
@@ -714,6 +723,7 @@
             }
         }
     </style>
+<script src="/static/js/session-navigation.js" defer></script>
 </head>
 <body>
     {% macro control_status() %}
@@ -755,7 +765,11 @@
                         </h1>
                     </div>
                     <div class="col-md-4 text-end">
-                        <div class="d-flex align-items-center justify-content-end">
+                        <div class="d-flex align-items-center justify-content-end flex-wrap">
+                            <button v-if="!selectedExam" type="button" class="btn btn-sm btn-outline-light me-3"
+                                    :disabled="loading" @click="returnToEntry">
+                                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回选择页
+                            </button>
                             <span class="status-indicator" :class="connectionStatus"></span>
                             <span class="text-white fw-semibold">{{ connectionText }}</span>
                         </div>
@@ -764,7 +778,7 @@
             </div>
 
             <!-- 学生信息 -->
-            <div class="student-info-card" data-entry="up">
+            <div v-if="selectedExam" class="student-info-card" data-entry="up">
                 <div class="row">
                     <div class="col-md-6">
                         <h5 class="text-primary mb-2">
@@ -783,26 +797,45 @@
 
             <!-- 主要内容 -->
             <div class="p-4">
+                <section v-if="!selectedExam" class="card card-custom practice-student-card overflow-hidden mb-4"
+                         data-entry="up" aria-labelledby="practice-student-title">
+                    <div class="card-header bg-primary text-white">
+                        <h2 id="practice-student-title" class="h5 mb-0">
+                            <i class="bi bi-person-badge me-2" aria-hidden="true"></i>学生信息
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <dl class="row gy-3 mb-0">
+                            <div class="col-md-4">
+                                <dt class="small text-secondary">学号</dt>
+                                <dd class="fw-semibold text-break mb-0">{{ studentInfo.student_id }}</dd>
+                            </div>
+                            <div class="col-md-4">
+                                <dt class="small text-secondary">姓名</dt>
+                                <dd class="fw-semibold text-break mb-0">{{ studentInfo.student_name }}</dd>
+                            </div>
+                            <div class="col-md-4">
+                                <dt class="small text-secondary">班级</dt>
+                                <dd class="fw-semibold text-break mb-0">{{ studentInfo.class_label }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </section>
                 <div class="row" :class="{ 'practice-layout': !selectedExam }">
                     <!-- 操作控制 -->
                     <div class="mb-4" :class="selectedExam ? 'col-12' : 'col-lg-4 mb-lg-0'">
                         <div class="card card-custom h-100" data-entry="right">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0">
-                                    <button v-if="!selectedExam" type="button" class="btn btn-sm btn-outline-light me-2"
-                                            title="大模型设置" aria-label="大模型设置" aria-haspopup="dialog"
-                                            @click="openAiModelSettingModal">
-                                        <i class="bi bi-gear" aria-hidden="true"></i>
-                                    </button>
-                                    <i v-else class="bi bi-gear me-2" aria-hidden="true"></i>
+                                    <i class="bi bi-gear me-2" aria-hidden="true"></i>
                                     操作控制
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <section v-if="selectedExam && selectedExam.content" class="mb-4 p-3 bg-light rounded">
-                                    <h5 class="text-primary">考试内容</h5>
-                                    <p style="white-space:pre-wrap;overflow-wrap:anywhere" v-text="selectedExam.content"></p>
-                                    <small class="text-secondary">本场规则 · {{ selectedExam.rule_filename }}</small>
+                                <section v-if="selectedExam" class="mb-4 p-3 bg-light rounded">
+                                    <h5 v-if="selectedExam.content" class="text-primary">考试内容</h5>
+                                    <p v-if="selectedExam.content" style="white-space:pre-wrap;overflow-wrap:anywhere" v-text="selectedExam.content"></p>
+                                    <small class="text-secondary">本场规则 · {{ selectedExam.rule_filename || '尚未指定' }}</small>
                                 </section>
                                 <div v-if="!selectedExam" class="rule-select-panel">
                                     <div class="rule-select-label">
@@ -859,6 +892,10 @@
                                     <button v-if="selectedExam" type="button" class="btn btn-custom btn-primary"
                                             @click="submitExam" :disabled="loading || !examRecordingId || examEnded || submittedScore !== null">
                                         <i class="bi bi-check2-square me-2"></i>检查并提交成绩
+                                    </button>
+                                    <button v-else type="button" class="btn btn-custom btn-info"
+                                            aria-haspopup="dialog" aria-controls="aiModelSettingModal" @click="openAiModelSettingModal">
+                                        <i class="bi bi-sliders me-2" aria-hidden="true"></i>大模型信息设置
                                     </button>
 
                                     <button
@@ -1108,7 +1145,7 @@
             <div class="modal-dialog">
                 <form v-if="modelDraft" class="modal-content" @submit.prevent="discoverModels">
                     <div class="modal-header card-header-ai">
-                        <h5 class="modal-title" id="modelSettingsTitle">大模型设置</h5>
+                        <h5 class="modal-title" id="modelSettingsTitle">大模型信息设置</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
                     </div>
                     <div class="modal-body">
@@ -1178,10 +1215,7 @@
                     connected: false,
 
                     // 学生信息
-                    studentInfo: {
-                        student_id: '',
-                        student_name: ''
-                    },
+                    studentInfo: INITIAL_STUDENT_INFO,
 
                     // 检测状态
                     detectionRunning: false,
@@ -1267,7 +1301,6 @@
 
             mounted() {
                 this.initSocket();
-                this.loadStudentInfo();
                 this.loadInitialData();
                 this.ready = true;
                 if (this.selectedExam) {
@@ -1599,27 +1632,12 @@
                     }
                 },
 
-                // 加载学生信息
-                loadStudentInfo() {
-                    const params = new URLSearchParams(window.location.search);
-                    const urlStudentId = params.get('student_id') || '';
-                    const urlStudentName = params.get('student_name') || '';
-                    let savedStudentInfo = {};
-                    try {
-                        savedStudentInfo = JSON.parse(sessionStorage.getItem('student_info') || '{}');
-                    } catch (error) {
-                        sessionStorage.removeItem('student_info');
+                async returnToEntry() {
+                    if (this.detectionRunning) {
+                        await this.stopDetection();
+                        if (this.detectionRunning) return;
                     }
-
-                    const studentInfo = {
-                        student_id: INITIAL_STUDENT_INFO.student_id || urlStudentId || savedStudentInfo.student_id || '',
-                        student_name: INITIAL_STUDENT_INFO.student_name || urlStudentName || savedStudentInfo.student_name || ''
-                    };
-
-                    this.studentInfo = studentInfo;
-                    if (studentInfo.student_id || studentInfo.student_name) {
-                        sessionStorage.setItem('student_info', JSON.stringify(studentInfo));
-                    }
+                    window.location.assign({{ (session.get('portal_root', '') ~ '/entry')|tojson }});
                 },
 
                 // 加载初始数据
@@ -1649,6 +1667,7 @@
                                     this.showSubmittedScore(result.submitted_score);
                                     return;
                                 }
+                                if (!ruleTicket) throw new Error('未取得本场考试的接线规则，请联系教师');
                             } catch (error) {
                                 this.statusMessage = error.message || '暂时无法确认考试状态，请稍后重试';
                                 return;
@@ -1658,7 +1677,7 @@
                         const newSessionId = (window.crypto && crypto.randomUUID)
                             ? crypto.randomUUID()
                             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-                        const startPath = ruleTicket ? "/api/exam/start" : "/api/yolo/start";
+                        const startPath = this.selectedExam ? "/api/exam/start" : "/api/yolo/start";
                         const response = await fetch(`${LOCAL_CLIENT_BASE}${startPath}`, {
                             method: 'POST',
                             headers: {
@@ -1670,8 +1689,8 @@
                                 session_id: newSessionId,
                                 test_id: this.selectedExam ? this.selectedExam.id : '',
                                 test_name: this.selectedExam ? this.selectedExam.name : '',
-                                rule_ticket: ruleTicket,
-                                rule_file: this.currentRuleFile || 'current_rule.json'
+                                ...(this.selectedExam ? { rule_ticket: ruleTicket }
+                                    : { rule_file: this.currentRuleFile || 'current_rule.json' })
                             })
                         });
 
@@ -1885,7 +1904,7 @@
                 // 生成题目
                 async generateQuestion() {
                     if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
-                        this.alertInPractice('请先配置Ollama大模型设置！');
+                        this.alertInPractice('请先在「大模型信息设置」中选择出题模型。');
                         return;
                     }
 

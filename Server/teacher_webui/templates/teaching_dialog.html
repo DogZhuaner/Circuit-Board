@@ -38,7 +38,7 @@
           <h3>内容与评分</h3>
           <label>考试内容<textarea v-model.trim="form.exam_content" rows="3" maxlength="10000" :disabled="busy || locked" :required="!initialExam || !!initialExam.exam_content" placeholder="填写接线任务和操作要求"></textarea></label>
           <label>接线规则文件<select v-model="form.rule_filename" :disabled="busy || locked" :required="!initialExam">
-            <option v-if="initialExam" value="">{{ initialExam.rule_filename ? '沿用已发布副本 · ' + initialExam.rule_filename : '沿用原考试规则' }}</option>
+            <option v-if="initialExam" value="">{{ initialExam.rule_filename ? '沿用已发布副本 · ' + initialExam.rule_filename : '尚未指定接线规则' }}</option>
             <option v-else value="" disabled>{{ loading ? '正在读取规则文件…' : '请选择规则文件' }}</option>
             <option v-for="file in files" :key="file.filename" :value="file.filename">{{ file.filename }}</option>
           </select></label>

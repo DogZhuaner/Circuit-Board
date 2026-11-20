@@ -219,11 +219,11 @@ def find_user_identity(user_no):
 
 def login_destination(user: dict) -> str:
     session.clear()
+    session["portal_root"] = request.url_root.rstrip("/")
     if user["role"] == "teacher":
         session["teacher_id"] = user["id"]
         session["teacher_name"] = user["name"]
-        query = urlencode({"teacher_id": user["id"], "teacher_name": user["name"]})
-        return f"{get_teacher_web_base(request.host_url)}/?{query}"
+        return f"{get_teacher_web_base(request.host_url)}/"
 
     session["student"] = {"id": user["id"], "name": user["name"]}
     return url_for("student_entry")
@@ -246,6 +246,14 @@ def login_page():
     return render_template("login.html")
 
 
+@app.post("/logout")
+def logout():
+    session.clear()
+    response = redirect(url_for("login_page"), code=303)
+    response.cache_control.no_store = True
+    return response
+
+
 @app.get("/entry")
 def student_entry():
     student = session.get("student")
@@ -255,8 +263,7 @@ def student_entry():
     mode = request.args.get("mode")
     student_base = get_student_web_base(request.host_url)
     if mode == "practice":
-        query = urlencode({"student_id": student["id"], "student_name": student["name"]})
-        return redirect(f"{student_base}/?{query}")
+        return redirect(f"{student_base}/")
 
     notice = ""
     status = 200

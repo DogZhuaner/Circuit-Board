@@ -66,10 +66,16 @@ def exam_rule_ticket(exam_id, student_no):
     if not rows:
         raise ExamEntryError("考试当前未开放", 409)
     filename, snapshot = rows[0]
-    if not filename and snapshot is None:
-        return None
-    if not EXAM_SCORE_KEY or not filename or not snapshot:
-        raise ExamEntryError("考试规则或网关签名密钥尚未配置", 503)
+    if not filename or not snapshot:
+        raise ExamEntryError("本场考试尚未指定接线规则，请联系教师", 409)
+    if not EXAM_SCORE_KEY:
+        raise ExamEntryError("考试网关签名密钥尚未配置", 503)
+    try:
+        rules = json.loads(snapshot)
+    except (TypeError, ValueError):
+        rules = None
+    if not isinstance(rules, list) or not rules:
+        raise ExamEntryError("本场考试的接线规则副本无效，请联系教师", 409)
     signer = URLSafeTimedSerializer(EXAM_SCORE_KEY, salt="wiring-exam-rule-v1")
     return signer.dumps({"exam": str(exam_id), "student": str(student_no),
-                         "filename": filename, "rules": json.loads(snapshot)})
+                         "filename": filename, "rules": rules})

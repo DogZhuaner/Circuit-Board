@@ -34,7 +34,7 @@
             </dl>
             <div class="exam-item-actions">
               <details @toggle="openDetails[exam.id] = $event.target.open"><summary>考试详情</summary>
-                <dl class="exam-facts"><dt>规则文件</dt><dd>{{ exam.rule_filename || '沿用原考试规则' }}</dd>
+                <dl class="exam-facts"><dt>规则文件</dt><dd>{{ exam.rule_filename || '尚未指定接线规则' }}</dd>
                   <dt>考试内容</dt><dd class="exam-content-text">{{ exam.exam_content || '未填写' }}</dd></dl>
                 <ended-exam-scores v-if="openDetails[exam.id] && status(exam) === '已结束'" :exam-id="exam.id"></ended-exam-scores>
               </details>

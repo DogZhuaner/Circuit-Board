@@ -858,7 +858,8 @@ def activate_exam_rule(payload):
         raise ValueError("考试规则凭据无效或已过期，请重新开始检测") from None
     if bundle["exam"] != str(payload.get("test_id")) or bundle["student"] != str(payload.get("student_no")):
         raise ValueError("考试规则与本次检测身份不符")
-    path = LOCAL_RULE_PATH.parent / ".exam" / "active.json"
+    exam_id = int(bundle["exam"])
+    path = LOCAL_RULE_PATH.parent / ".exam" / f"{exam_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(bundle["rules"], ensure_ascii=False), encoding="utf-8")
     practice_rule = (Global_Config.test_rule, get_rule_filename())
@@ -908,6 +909,11 @@ def start_yolo():
             activate_exam_rule(payload)
         except (ValueError, OSError) as exc:
             return jsonify(success=False, message=str(exc)), 400
+    else:
+        if payload.get("test_id") or payload.get("rule_ticket"):
+            return jsonify(success=False, message="考试检测必须使用本场考试的规则凭据"), 400
+        payload["test_id"] = ""
+        payload["test_name"] = ""
 
     update_runtime_context(payload)
     stm_started = False

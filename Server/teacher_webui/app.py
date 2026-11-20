@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session
+from flask import Flask, render_template, request, redirect, jsonify, send_from_directory, session
 import os
 from flask_socketio import SocketIO, emit
 import json
@@ -12,7 +12,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 
 # 导入数据库连接器
-from tools.config import DB_CONFIG, RULE_SERVER_CONFIG, TEACHER_WEB_CONFIG, STUDENT_WEB_CONFIG
+from tools.config import DB_CONFIG, RULE_SERVER_CONFIG, TEACHER_WEB_CONFIG, STUDENT_WEB_CONFIG, portal_login_url
 from contextlib import closing
 from mysql.connector import Error, IntegrityError
 from db import MySQLConnector as RosterDatabase
@@ -265,24 +265,18 @@ def db_error_response(default_message='数据库操作失败'):
     return jsonify({'success': False, 'message': message}), 500
 
 
+@app.before_request
+def require_teacher_session():
+    if request.endpoint == 'static' or session.get('teacher_id'):
+        return
+    if request.path.startswith('/api/'):
+        return jsonify(success=False, message='请先登录教师账号'), 401
+    return redirect(portal_login_url(request.host_url, request.script_root))
+
+
 @app.route('/')
 def index():
-    """教师主页面"""
-    # 从URL参数中获取用户信息
-    teacher_id = request.args.get('teacher_id')
-    teacher_name = request.args.get('teacher_name')
-
-    # 如果有用户信息，则更新全局配置
-    if teacher_id and teacher_name:
-        config = get_config_module()
-        if hasattr(config['Login_Session'], 'tno'):
-            config['Login_Session'].tno = teacher_id
-        if hasattr(config['Login_Session'], 'account_name'):
-            config['Login_Session'].account_name = teacher_name
-
-        print(f"已更新教师信息: ID={teacher_id}, 姓名={teacher_name}")
-
-    return render_template('index.html')
+    return render_template('index.html'), 200, {'Cache-Control': 'no-store'}
 
 
 # 添加新路由用于显示规则下载服务模态框
@@ -512,12 +506,7 @@ def activate_rule_file(filename):
 @app.route('/api/teacher_info', methods=['GET'])
 def get_teacher_info():
     """获取教师信息"""
-    config = get_config_module()
-    teacher_info = {
-        'teacher_id': config['Login_Session'].tno,
-        'teacher_name': config['Login_Session'].account_name
-    }
-    return jsonify(teacher_info)
+    return jsonify(teacher_id=session['teacher_id'], teacher_name=session.get('teacher_name', ''))
 
 
 @app.route('/api/students', methods=['GET'])
@@ -629,8 +618,7 @@ def get_registration_requests():
     """获取当前教师需要审批的注册请求"""
     try:
         # 获取当前教师信息
-        config = get_config_module()
-        teacher_id = config['Login_Session'].tno
+        teacher_id = session['teacher_id']
 
         if not teacher_id:
             return jsonify({

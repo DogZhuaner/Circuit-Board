@@ -564,6 +564,7 @@
             }
         }
     </style>
+<script src="/static/js/session-navigation.js" defer></script>
 </head>
 <body>
 <div id="app">
@@ -580,8 +581,11 @@
                 <span class="status-indicator" :class="connected ? 'status-connected' : 'status-disconnected'"></span>
                 <span v-text="connected ? '已连接服务器' : '在线模式'"></span>
             </div>
-            <div v-if="teacherInfo">
-                工号：<span v-text="teacherInfo.tno"></span>　|　姓名：<span v-text="teacherInfo.teacher_name"></span>
+            <div class="d-flex align-items-center justify-content-end flex-wrap gap-2">
+                <span v-if="teacherInfo">工号：<span v-text="teacherInfo.tno"></span>　|　姓名：<span v-text="teacherInfo.teacher_name"></span></span>
+                <form method="post" action="{{ session.get('portal_root', '') }}/logout">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-box-arrow-right me-1" aria-hidden="true"></i>退出登录</button>
+                </form>
             </div>
         </div>
         <div class="btn-container">
@@ -2557,7 +2561,7 @@ const app = createApp({
     data() {
         return {
             connected: false,
-            teacherInfo: null,
+            teacherInfo: {{ dict(tno=session.teacher_id, teacher_name=session.teacher_name)|tojson }},
             ruleServerStatus: 'stopped',
             ruleServerMessage: '',
             socket: null,
@@ -3573,61 +3577,6 @@ const app = createApp({
                 alert(this.ruleServerStatus === 'running' ? '规则下载服务已启动' : '规则下载服务已停止');
             });
         },
-        fetchTeacherInfo() {
-            const signedIn = {{ (dict(tno=session.teacher_id, teacher_name=session.teacher_name) if session.get('teacher_id') and session.get('teacher_name') else none)|tojson }};
-            if (signedIn) {
-                this.teacherInfo = signedIn;
-                return;
-            }
-            try {
-                // 首先尝试从URL参数中获取教师信息
-                const urlParams = new URLSearchParams(window.location.search);
-                const teacher_id = urlParams.get('teacher_id');
-                const teacher_name = urlParams.get('teacher_name');
-
-                if (teacher_id && teacher_name) {
-                    // 如果URL参数中有教师信息，直接使用
-                    this.teacherInfo = {
-                        tno: teacher_id,
-                        teacher_name: teacher_name
-                    };
-                    console.log('从URL参数加载教师信息:', this.teacherInfo);
-                } else {
-                    // 如果URL参数中没有，则从API获取
-                    fetch('api/teacher_info')
-                        .then(response => response.json())
-                        .then(data => {
-                            this.teacherInfo = data;
-                            console.log('从API加载教师信息:', this.teacherInfo);
-                        })
-                        .catch(error => {
-                            console.error('获取教师信息失败:', error);
-                            // 再次尝试从URL参数获取
-                            const urlParams = new URLSearchParams(window.location.search);
-                            const teacher_id = urlParams.get('teacher_id');
-                            const teacher_name = urlParams.get('teacher_name');
-                            if (teacher_id || teacher_name) {
-                                this.teacherInfo = {
-                                    tno: teacher_id || '',
-                                    teacher_name: teacher_name || ''
-                                };
-                            }
-                        });
-                }
-            } catch (error) {
-                console.error('加载教师信息时发生异常:', error);
-                // 尝试直接从URL参数获取
-                const urlParams = new URLSearchParams(window.location.search);
-                const teacher_id = urlParams.get('teacher_id');
-                const teacher_name = urlParams.get('teacher_name');
-                if (teacher_id || teacher_name) {
-                    this.teacherInfo = {
-                        tno: teacher_id || '',
-                        teacher_name: teacher_name || ''
-                    };
-                }
-            }
-        },
         setupSocket() {
             this.socket = io();
             this.socket.on('connection_established', (data) => {
@@ -3786,7 +3735,7 @@ const app = createApp({
         if (this.canManageClasses && new URLSearchParams(location.search).get('panel') === 'students') {
             this.openManageStudentsModal();
         }
-        this.fetchTeacherInfo();
+
         this.setupSocket();
         window.addEventListener('resize', this.refreshRuleCanvas);
         this.$nextTick(() => {

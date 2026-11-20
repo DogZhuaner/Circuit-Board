@@ -61,13 +61,12 @@ def exam_result(exam_id, student_no, student_name, *, submission=None, check_ope
                     return float(existing[0])
                 if submission is None:
                     return None
+                if not exam[1]:
+                    raise ExamEntryError("本场考试尚未指定接线规则，无法提交成绩", 409)
                 score, proof = verified_receipt(submission.get("receipt"), student_no, exam_id)
-                digest = None
-                if exam[1] is not None and not proof.get("archive_sha256"):
+                if not proof.get("archive_sha256"):
                     raise ExamEntryError("请使用支持指定考试规则的网关重新检测", 409)
-                if "archive_sha256" in proof or "archive" in submission:
-                    digest = store_archive(submission.get("archive"), proof,
-                                           expected_rules=json.loads(exam[1]) if exam[1] else None)
+                digest = store_archive(submission.get("archive"), proof, expected_rules=json.loads(exam[1]))
                 cursor.execute(
                     "INSERT INTO exam_result (student_no,student_name,test_id,test_name,test_score) "
                     "SELECT %s,%s,%s,%s,%s FROM exam_test WHERE id=%s AND deadline_time>NOW()",
@@ -75,11 +74,10 @@ def exam_result(exam_id, student_no, student_name, *, submission=None, check_ope
                 )
                 if not cursor.rowcount:
                     raise ExamEntryError("考试已结束", 410)
-                if digest:
-                    cursor.execute(
-                        "INSERT INTO exam_recording (result_id, recording_id, sha256) VALUES (%s,%s,%s)",
-                        (cursor.lastrowid, proof["recording_id"], digest),
-                    )
+                cursor.execute(
+                    "INSERT INTO exam_recording (result_id, recording_id, sha256) VALUES (%s,%s,%s)",
+                    (cursor.lastrowid, proof["recording_id"], digest),
+                )
                 db.connection.commit()
                 return float(score)
     except Error as exc:

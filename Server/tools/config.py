@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 CONFIG_FILE = Path(os.getenv("SERVER_CONFIG_FILE", Path(__file__).resolve().parents[1] / "config.env"))
@@ -111,3 +112,14 @@ def get_student_web_base(host_url):
 
 def get_teacher_web_base(host_url):
     return _env("TEACHER_WEB_BASE", f"{host_url.rstrip('/')}/teacher").rstrip("/")
+
+
+def portal_login_url(host_url, script_root):
+    if script_root:
+        return '/'
+    host = urlsplit(host_url)
+    hostname = host.hostname
+    if ':' in hostname:
+        hostname = f'[{hostname}]'
+    port = SERVER_CONFIG['https_port' if host.scheme == 'https' else 'port']
+    return f'{host.scheme}://{hostname}:{port}/'
