@@ -2,67 +2,89 @@
   const record = JSON.parse(document.getElementById('record').textContent);
   const {events, batches, initial_state: initial} = record;
   const el = id => document.getElementById(id);
-  const board = el('board');
-  const surface = el('surface');
-  const layer = el('wire-layer');
   const contacts = new Map();
   const regions = buildRuleContactRegions();
-  const pairKey = pair => JSON.stringify([...pair].sort());
-  const correctPairs = JSON.parse(el('correct-pairs').textContent);
-  const matches = correctPairs === null ? null : new Set(correctPairs.map(pairKey));
-  const columnOf = new Map();
-  regions.forEach((region, i) => region.contacts.forEach(({name}) => columnOf.set(name, i)));
-  const routes = new Map();
-  const legacyNames = new Set();
-  const pitch = 12;
-  const laneCount = Array(regions.length + 1).fill(0);
-  let topCount = 0;
-
-  // Allocate once, in first-connection order. Removed wires keep their lanes.
-  function planPair(pair) {
-    const key = pairKey(pair);
-    if (routes.has(key)) return;
-    const [start, end] = pair;
-    const a = columnOf.get(start), b = columnOf.get(end);
-    if (a === undefined) legacyNames.add(start);
-    if (b === undefined) legacyNames.add(end);
-    const known = a !== undefined && b !== undefined;
-    const startRight = known && a <= b;
-    const endRight = known && b <= a;
-    const firstGap = (a ?? 0) + Number(startRight);
-    const lastGap = (b ?? 0) + Number(endRight);
-    const firstLane = laneCount[firstGap]++;
-    const correct = matches === null ? null : matches.has(key);
-    const route = {start, end, startRight, endRight, firstGap, lastGap, firstLane, correct};
-    if (firstGap !== lastGap) {
-      route.lastLane = laneCount[lastGap]++;
-      route.topLane = topCount++;
+  const pairKey = pair => JSON.stringify(pair.map(name => String(name).trim()).sort());
+  const rules = JSON.parse(el('review-rules').textContent);
+  const answers = new Map();
+  const ruleTargets = new Map();
+  const ruleStarts = new Set();
+  for (const rule of rules || []) {
+    const key = pairKey(rule.nodes);
+    ruleStarts.add(rule.nodes[0].trim());
+    if (!answers.has(key) || Number(rule.score) > Number(answers.get(key))) {
+      answers.set(key, rule.score);
+      ruleTargets.set(key, rule.nodes[1].trim());
     }
-    routes.set(key, route);
   }
-  initial.pairs.forEach(planPair);
-  events.forEach(event => planPair(event.terminals));
-  const widths = laneCount.map((count, i) => count ? 8 + pitch * count
-    : (i > 0 && i < regions.length ? 12 : 0));
-  const roof = topCount ? 6 + topCount * pitch : 0;
-  surface.style.minWidth = (704 + widths.reduce((sum, n) => sum + n, 0)) + 'px';
-  surface.style.paddingTop = roof + 'px';
-  surface.style.paddingRight = widths[regions.length] + 'px';
+  const knownNames = new Set(regions.flatMap(region => region.contacts.map(contact => contact.name)));
+  const extraNames = new Set();
+  const wires = new Map();
+  function register(pair) {
+    const id = pairKey(pair);
+    if (wires.has(id)) return;
+    for (const name of pair) if (!knownNames.has(name)) extraNames.add(name);
+    wires.set(id, {id, start: pair[0], end: pair[1], score: answers.get(id)});
+  }
+  initial.pairs.forEach(register);
+  events.forEach(event => register(event.terminals));
+  if (extraNames.size) {
+    regions.push({name: 'legacy', title: '记录中的其他端子', rowCount: extraNames.size + 1,
+      contacts: [...extraNames].map((name, i) => ({name, row: i + 2}))});
+  }
+
+  // Plan all recorded edges once so seeking and undoing use the same physical tracks.
+  const plan = planRuleWireTracks(regions, [...wires.values()]);
+  // Historical wires can reuse a socket at different steps. Keep their leads centered.
+  for (const route of plan.routes) {
+    route.startOffset = 0;
+    route.endOffset = 0;
+  }
+  const visibleWires = Vue.shallowRef([]);
+  const edges = Vue.shallowReactive(new Map());
+  const ruleScoreText = Vue.computed(() => {
+    if (rules === null) return '暂无规则分值';
+    let earned = 0, maximum = 0;
+    for (const [key, score] of answers) {
+      const points = score == null ? NaN : Number(score);
+      maximum += points;
+      if (edges.has(key)) earned += points;
+    }
+    const format = value => Number.isFinite(value) ? value.toLocaleString('zh-CN') : '—';
+    return format(earned) + ' / ' + format(maximum) + ' 分';
+  });
   Vue.createApp({
     setup() {
+      const previewRules = (rules || []).map(({nodes, score}, index) => ({
+        id: index + 1, pair: pairKey(nodes), start: nodes[0], end: nodes[1], score
+      }));
+      const ruleBuilder = Vue.computed(() => ({
+        wires: previewRules.filter(wire => edges.has(wire.pair))
+      }));
+      Vue.watch(ruleBuilder, (current, previous) => {
+        const index = current.wires.findLastIndex(wire => !previous.wires.includes(wire));
+        if (index < 0) return;
+        const panel = el('review-layout').querySelector('.rule-summary');
+        const card = panel.querySelectorAll('.rule-preview-item')[index];
+        const bounds = card.getBoundingClientRect();
+        const top = panel.getBoundingClientRect().top + panel.clientTop;
+        const bottom = top + panel.clientHeight;
+        if (bounds.bottom > bottom) panel.scrollTop += Math.ceil(bounds.bottom - bottom);
+        else if (bounds.top < top) panel.scrollTop -= Math.ceil(top - bounds.top);
+      }, {flush: 'post'});
       return {
-        ruleContactRegions: regions,
-        ruleWirePlan: {gaps: widths.slice(0, regions.length), rowSpacing: {}},
-        legacyNames: [...legacyNames],
+        ruleContactRegions: regions, ruleWirePlan: plan, visibleWires, wireColor, ruleBuilder, ruleScoreText,
         setRuleContactRef(name, node) {
           if (node) contacts.set(name, node);
           else contacts.delete(name);
         }
       };
     }
-  }).mount('#catalog');
+  }).mount('#review-layout');
+  const board = el('board'), surface = el('surface');
   const grid = surface.querySelector('.rule-canvas-scale');
-  const edges = new Map();
+  surface.style.minWidth = (176 * regions.length + plan.gaps.reduce((sum, n) => sum + n, 0)) + 'px';
+  let routes;
   const scores = new Map(batches.filter(batch => batch.last_seq != null)
     .map(batch => [batch.last_seq, batch.score_after_batch]));
   let step = 0;
@@ -73,68 +95,41 @@
   function updateGeometry() {
     const zoom = Number(el('zoom').value);
     surface.style.transform = `scale(${zoom})`;
-    const origin = surface.getBoundingClientRect();
-    const columns = [...grid.children].map(node => node.getBoundingClientRect());
-    const left = columns.map((box, i) => (box.left - origin.left) / zoom - widths[i]);
-    left.push((columns[columns.length - 1].right - origin.left) / zoom);
-    function socket(name, right) {
-      const button = contacts.get(name);
-      const box = (right ? button.lastElementChild : button.firstElementChild).getBoundingClientRect();
-      return {x: (box.left + box.width / 2 - origin.left) / zoom,
-              y: (box.top + box.height / 2 - origin.top) / zoom};
-    }
-    for (const r of routes.values()) {
-      const a = socket(r.start, r.startRight), b = socket(r.end, r.endRight);
-      const x = left[r.firstGap] + 6 + r.firstLane * pitch;
-      let path = `M ${a.x} ${a.y} H ${x}`;
-      if (r.firstGap !== r.lastGap) {
-        const endX = left[r.lastGap] + 6 + r.lastLane * pitch;
-        path += ` V ${6 + r.topLane * pitch} H ${endX}`;
-      }
-      r.path = path + ` V ${b.y} H ${b.x}`;
-    }
+    const placed = getRuleWireRoutes(plan, surface, grid, name => contacts.get(name), zoom, surface.offsetWidth);
+    routes = new Map(placed.map(wire => [wire.id, wire]));
     surface.parentElement.style.width = Math.ceil(surface.offsetWidth * zoom) + 'px';
     surface.parentElement.style.height = Math.ceil(surface.offsetHeight * zoom) + 'px';
   }
 
   function drawWires() {
     const event = events[step - 1];
-    const paths = document.createDocumentFragment();
-    function wire(pair, dashed) {
-      const key = pairKey(pair);
-      const route = routes.get(key);
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', route.path);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', route.correct === null ? '#64748b' : route.correct ? '#27855f' : '#c03932');
-      path.setAttribute('stroke-width', dashed || (event && key === pairKey(event.terminals)) ? 3 : 1.8);
-      if (event && key === pairKey(event.terminals)) path.classList.add('current-wire');
-      if (dashed) path.setAttribute('stroke-dasharray', '6 5');
-      paths.append(path);
-    }
-    for (const pair of edges.values()) wire(pair, false);
-    if (event?.operation === 'remove') wire(event.terminals, true);
-    layer.replaceChildren(paths);
+    const current = event && pairKey(event.terminals);
+    const removed = event?.operation === 'remove' ? current : null;
+    const ids = [...edges.keys()];
+    if (removed) ids.push(removed);
+    visibleWires.value = ids.map(id => ({
+      ...routes.get(id), current: id === current, removed: id === removed,
+      color: rules === null ? '#64748b' : answers.has(id) ? '#27855f' : '#c03932'
+    }));
   }
 
-  function revealEvent(event) {
-    if (!event) return;
-    const [a, b] = event.terminals.map(name => contacts.get(name).getBoundingClientRect());
+  function orderedTerminals(pair) {
+    const [a, b] = pair.map(name => name.trim());
+    const target = ruleTargets.get(pairKey(pair));
+    // The recorder sorts pairs. For a wrong connection, use the sole known rule start
+    // when available; otherwise keep the recorded order.
+    const reverse = target === a || (target === undefined && ruleStarts.has(b) && !ruleStarts.has(a));
+    return reverse ? [pair[1], pair[0]] : pair;
+  }
+
+  function revealTarget(name) {
+    const button = contacts.get(name);
+    const label = document.createRange();
+    label.selectNodeContents(button.firstElementChild.nextElementSibling);
+    const target = label.getBoundingClientRect();
     const view = board.getBoundingClientRect();
-    const wire = layer.querySelector('.current-wire')?.getBoundingClientRect();
-    const xBounds = wire && wire.width + 12 <= board.clientWidth
-      ? [wire.left - 6, wire.right + 6] : [Math.min(a.left, b.left), Math.max(a.right, b.right)];
-    const yBounds = wire && wire.height + 12 <= board.clientHeight
-      ? [wire.top - 6, wire.bottom + 6] : [Math.min(a.top, b.top), Math.max(a.bottom, b.bottom)];
-    function offset(lo, hi, first, start, size) {
-      if (lo >= start && hi <= start + size) return 0;
-      const center = hi - lo <= size ? (lo + hi) / 2 : first;
-      return center - start - size / 2;
-    }
-    board.scrollBy(offset(...xBounds,
-                          a.left + a.width / 2, view.left, board.clientWidth),
-                   offset(...yBounds,
-                          a.top + a.height / 2, view.top, board.clientHeight));
+    board.scrollBy(target.left + target.width / 2 - view.left - board.clientLeft - board.clientWidth / 2,
+                   target.top + target.height / 2 - view.top - board.clientTop - board.clientHeight / 2);
   }
   function draw() {
     const event = events[step - 1];
@@ -142,12 +137,13 @@
       button.classList.toggle('selected', Boolean(event?.terminals.includes(name)));
     }
     drawWires();
-    revealEvent(event);
     let action = '初始接线';
     if (event) {
-      const correct = routes.get(pairKey(event.terminals)).correct;
+      const pair = orderedTerminals(event.terminals);
+      Vue.nextTick(() => { if (events[step - 1] === event) revealTarget(pair[1]); });
+      const correct = rules === null ? null : answers.has(pairKey(event.terminals));
       const verdict = correct === null ? '无法判定' : correct ? '正确' : '错误';
-      action = (event.operation === 'add' ? '新增' : '撤销') + '　' + event.terminals.join(' ↔ ') + '（' + verdict + '）';
+      action = (event.operation === 'add' ? '新增' : '撤销') + '　' + pair.join(' → ') + '（' + verdict + '）';
     }
     el('description').textContent = '第 ' + step + ' / ' + events.length + ' 步　' + action;
     el('score').textContent = '当前连接 ' + edges.size + ' 对　采集评分 ' +
@@ -197,7 +193,7 @@
     drawWires();
   }
   el('zoom').onchange = () => { updateGeometry(); draw(); };
-  if (window.ResizeObserver) new ResizeObserver(refreshLayout).observe(el('catalog'));
+  if (window.ResizeObserver) new ResizeObserver(refreshLayout).observe(grid);
   else window.addEventListener('resize', refreshLayout);
   updateGeometry();
   seek(0);

@@ -1,0 +1,419 @@
+{
+  "schema_version": 1,
+  "recording_id": "3f6c81614da94b8e8dc7deb55627f3c9",
+  "capture_semantics": "simulated_terminal_pairs",
+  "batch_order_policy": "shuffle_once_on_capture",
+  "metadata": {
+    "test_id": "DEMO-CROSS-REGION",
+    "test_name": "区域一跨区接线模拟",
+    "simulated": true,
+    "rule_snapshot": [
+      {
+        "id": 1,
+        "nodes": [
+          "QS1-1",
+          "L1"
+        ],
+        "score": 10
+      },
+      {
+        "id": 2,
+        "nodes": [
+          "QS1-3",
+          "L2"
+        ],
+        "score": 10
+      },
+      {
+        "id": 3,
+        "nodes": [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ],
+        "score": 10
+      },
+      {
+        "id": 4,
+        "nodes": [
+          "PLC-I0.1",
+          "SB3-4/NO"
+        ],
+        "score": 10
+      },
+      {
+        "id": 5,
+        "nodes": [
+          "PLC-I0.2",
+          "KM1-14/NO"
+        ],
+        "score": 10
+      },
+      {
+        "id": 6,
+        "nodes": [
+          "PLC-I0.3",
+          "KM2-14/NO"
+        ],
+        "score": 10
+      }
+    ],
+    "initial_score": 0
+  },
+  "started_at": "2026-11-20T06:14:21.000+00:00",
+  "ended_at": "2026-11-20T06:14:43.000+00:00",
+  "status": "completed",
+  "elapsed_ms": 22000,
+  "initial_state": {
+    "pairs": [],
+    "score": 0
+  },
+  "latest_state": {
+    "pairs": [
+      [
+        "KM1-14/NO",
+        "PLC-I0.2"
+      ],
+      [
+        "KM2-14/NO",
+        "PLC-I0.3"
+      ],
+      [
+        "L1",
+        "QS1-1"
+      ],
+      [
+        "L2",
+        "QS1-3"
+      ],
+      [
+        "PLC-I0.0",
+        "SB2-4/NO"
+      ],
+      [
+        "PLC-I0.1",
+        "SB3-4/NO"
+      ]
+    ],
+    "score": 60.0
+  },
+  "last_seq": 8,
+  "last_batch": 8,
+  "next_after_seq": 8,
+  "has_more": false,
+  "events": [
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:1",
+      "seq": 1,
+      "batch_id": 1,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:23.000+00:00",
+      "elapsed_ms": 2000,
+      "operation": "add",
+      "terminals": [
+        "L1",
+        "QS1-1"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:2",
+      "seq": 2,
+      "batch_id": 2,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:26.000+00:00",
+      "elapsed_ms": 5000,
+      "operation": "add",
+      "terminals": [
+        "PLC-I0.0",
+        "SB2-4/NO"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:3",
+      "seq": 3,
+      "batch_id": 3,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:29.000+00:00",
+      "elapsed_ms": 8000,
+      "operation": "add",
+      "terminals": [
+        "KM2-14/NO",
+        "PLC-I0.2"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:4",
+      "seq": 4,
+      "batch_id": 4,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:31.000+00:00",
+      "elapsed_ms": 10000,
+      "operation": "remove",
+      "terminals": [
+        "KM2-14/NO",
+        "PLC-I0.2"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:5",
+      "seq": 5,
+      "batch_id": 5,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:34.000+00:00",
+      "elapsed_ms": 13000,
+      "operation": "add",
+      "terminals": [
+        "KM1-14/NO",
+        "PLC-I0.2"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:6",
+      "seq": 6,
+      "batch_id": 6,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:37.000+00:00",
+      "elapsed_ms": 16000,
+      "operation": "add",
+      "terminals": [
+        "L2",
+        "QS1-3"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:7",
+      "seq": 7,
+      "batch_id": 7,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:40.000+00:00",
+      "elapsed_ms": 19000,
+      "operation": "add",
+      "terminals": [
+        "PLC-I0.1",
+        "SB3-4/NO"
+      ],
+      "order_in_batch": "single"
+    },
+    {
+      "event_id": "3f6c81614da94b8e8dc7deb55627f3c9:8",
+      "seq": 8,
+      "batch_id": 8,
+      "index_in_batch": 1,
+      "timestamp": "2026-11-20T06:14:43.000+00:00",
+      "elapsed_ms": 22000,
+      "operation": "add",
+      "terminals": [
+        "KM2-14/NO",
+        "PLC-I0.3"
+      ],
+      "order_in_batch": "single"
+    }
+  ],
+  "batches": [
+    {
+      "batch_id": 1,
+      "timestamp": "2026-11-20T06:14:23.000+00:00",
+      "elapsed_ms": 2000,
+      "source": "simulation",
+      "first_seq": 1,
+      "last_seq": 1,
+      "event_count": 1,
+      "pairs": [
+        [
+          "L1",
+          "QS1-1"
+        ]
+      ],
+      "score_after_batch": 10
+    },
+    {
+      "batch_id": 2,
+      "timestamp": "2026-11-20T06:14:26.000+00:00",
+      "elapsed_ms": 5000,
+      "source": "simulation",
+      "first_seq": 2,
+      "last_seq": 2,
+      "event_count": 1,
+      "pairs": [
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ]
+      ],
+      "score_after_batch": 20
+    },
+    {
+      "batch_id": 3,
+      "timestamp": "2026-11-20T06:14:29.000+00:00",
+      "elapsed_ms": 8000,
+      "source": "simulation",
+      "first_seq": 3,
+      "last_seq": 3,
+      "event_count": 1,
+      "pairs": [
+        [
+          "KM2-14/NO",
+          "PLC-I0.2"
+        ],
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ]
+      ],
+      "score_after_batch": 20
+    },
+    {
+      "batch_id": 4,
+      "timestamp": "2026-11-20T06:14:31.000+00:00",
+      "elapsed_ms": 10000,
+      "source": "simulation",
+      "first_seq": 4,
+      "last_seq": 4,
+      "event_count": 1,
+      "pairs": [
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ]
+      ],
+      "score_after_batch": 20
+    },
+    {
+      "batch_id": 5,
+      "timestamp": "2026-11-20T06:14:34.000+00:00",
+      "elapsed_ms": 13000,
+      "source": "simulation",
+      "first_seq": 5,
+      "last_seq": 5,
+      "event_count": 1,
+      "pairs": [
+        [
+          "KM1-14/NO",
+          "PLC-I0.2"
+        ],
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ]
+      ],
+      "score_after_batch": 30
+    },
+    {
+      "batch_id": 6,
+      "timestamp": "2026-11-20T06:14:37.000+00:00",
+      "elapsed_ms": 16000,
+      "source": "simulation",
+      "first_seq": 6,
+      "last_seq": 6,
+      "event_count": 1,
+      "pairs": [
+        [
+          "KM1-14/NO",
+          "PLC-I0.2"
+        ],
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "L2",
+          "QS1-3"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ]
+      ],
+      "score_after_batch": 40
+    },
+    {
+      "batch_id": 7,
+      "timestamp": "2026-11-20T06:14:40.000+00:00",
+      "elapsed_ms": 19000,
+      "source": "simulation",
+      "first_seq": 7,
+      "last_seq": 7,
+      "event_count": 1,
+      "pairs": [
+        [
+          "KM1-14/NO",
+          "PLC-I0.2"
+        ],
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "L2",
+          "QS1-3"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ],
+        [
+          "PLC-I0.1",
+          "SB3-4/NO"
+        ]
+      ],
+      "score_after_batch": 50
+    },
+    {
+      "batch_id": 8,
+      "timestamp": "2026-11-20T06:14:43.000+00:00",
+      "elapsed_ms": 22000,
+      "source": "simulation",
+      "first_seq": 8,
+      "last_seq": 8,
+      "event_count": 1,
+      "pairs": [
+        [
+          "KM1-14/NO",
+          "PLC-I0.2"
+        ],
+        [
+          "KM2-14/NO",
+          "PLC-I0.3"
+        ],
+        [
+          "L1",
+          "QS1-1"
+        ],
+        [
+          "L2",
+          "QS1-3"
+        ],
+        [
+          "PLC-I0.0",
+          "SB2-4/NO"
+        ],
+        [
+          "PLC-I0.1",
+          "SB3-4/NO"
+        ]
+      ],
+      "score_after_batch": 60
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "archive_sha256": "d244522b676783d63beb499f2d48692994855de62e4e0e2a00f963ba9e2e768c",
+  "rules": [
+    {
+      "nodes": [
+        "XT1-1",
+        "XT2-1"
+      ],
+      "score": 10
+    },
+    {
+      "nodes": [
+        "XT1-2",
+        "XT2-2"
+      ],
+      "score": 10
+    },
+    {
+      "nodes": [
+        "XT1-3",
+        "XT2-3"
+      ],
+      "score": 10
+    },
+    {
+      "nodes": [
+        "XT1-4",
+        "XT2-4"
+      ],
+      "score": 10
+    },
+    {
+      "nodes": [
+        "XT1-5",
+        "XT2-5"
+      ],
+      "score": 10
+    },
+    {
+      "nodes": [
+        "XT1-6",
+        "XT2-6"
+      ],
+      "score": 10
+    }
+  ]
+}

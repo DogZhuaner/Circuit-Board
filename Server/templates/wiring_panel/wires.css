@@ -1,0 +1,45 @@
+.rule-wire-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 5;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.rule-wire-group {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.rule-wire-underlay {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.9);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.rule-wire-path {
+    fill: none;
+    stroke: var(--wire-color);
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 2px 2px rgba(29, 78, 216, 0.22));
+}
+
+.rule-wire-terminal {
+    fill: #ffffff;
+    stroke: var(--wire-color);
+    stroke-width: 2;
+}
+
+.rule-wire-caption { pointer-events: none; }
+.rule-wire-caption rect { fill: white; stroke: var(--wire-color); }
+.rule-score-label {
+    fill: var(--wire-color);
+    font: 700 11px ui-monospace, monospace;
+    text-anchor: middle;
+    dominant-baseline: central;
+}

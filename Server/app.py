@@ -354,7 +354,7 @@ def score_review(result_id, sno=None):
         db.close()
     if not rows:
         abort(404)
-    return render_wiring_review(*rows[0], scores_url=url_for("student_scores", sno=sno))
+    return render_wiring_review(*rows[0], result_id=result_id, scores_url=url_for("student_scores", sno=sno))
 
 
 @app.get("/staff/exams/<int:exam_id>/scores/<int:result_id>/review")
@@ -375,42 +375,62 @@ def exam_score_review(exam_id: int, result_id: int):
         db.close()
     if not rows:
         abort(404)
-    return render_wiring_review(*rows[0])
+    return render_wiring_review(*rows[0], result_id=result_id)
 
 
-def review_correct_pairs(record: dict, rules):
+def review_rules(record, digest, exam_id, snapshot, result_id):
+    metadata = record["metadata"]
+    captured = metadata.pop("rule_snapshot", None)
+    if snapshot is not None:
+        rules = json.loads(snapshot)
+    elif captured is not None and str(metadata.get("test_id")) == str(exam_id):
+        rules = captured
+    else:
+        # A legacy review assignment belongs to one result and one exact recording.
+        rules = None
+        if result_id is not None:
+            path = PROJECT_ROOT / "data" / "review_rules" / f"result-{result_id}.json"
+            try:
+                assigned = json.loads(path.read_bytes())
+            except FileNotFoundError:
+                assigned = {}
+            if assigned.get("archive_sha256") == digest:
+                rules = assigned.get("rules")
     if isinstance(rules, dict):
         rules = rules.get("data") if isinstance(rules.get("data"), list) else rules.get("items")
     if not isinstance(rules, list):
         return None
-
-    # The scorer ignores terminal order and surrounding whitespace, including for zero-point rules.
-    def pair_key(pair):
-        return tuple(sorted(str(node).strip() for node in pair))
-
-    answers = {pair_key(rule["nodes"]) for rule in rules if isinstance(rule, dict)
-               and isinstance(rule.get("nodes"), list) and len(rule["nodes"]) == 2}
-    # Send only matches that actually appear in this recording.
-    observed = {tuple(pair) for pair in record["initial_state"]["pairs"]}
-    observed.update(tuple(event["terminals"]) for event in record["events"])
-    return sorted(pair for pair in observed if pair_key(pair) in answers)
+    pairs = []
+    for rule in rules:
+        if not isinstance(rule, dict) or not isinstance(rule.get("nodes"), list):
+            continue
+        nodes = [str(node).strip() for node in rule["nodes"] if str(node).strip()]
+        # The teacher editor exports each adjacent pair of a continuous connection.
+        for left, right in zip(nodes, nodes[1:]):
+            pairs.append({"nodes": [left, right], "score": rule.get("score", 0)})
+    return pairs
 
 
-def render_wiring_review(name: str, digest: str, exam_id: str, snapshot: Optional[str], scores_url: Optional[str] = None):
+def render_wiring_review(name: str, digest: str, exam_id: str, snapshot: Optional[str],
+                         scores_url: Optional[str] = None, *, result_id=None):
     try:
         record = json.loads(archive_path(digest).read_bytes())
-        captured_rules = record["metadata"].pop("rule_snapshot", None)
-        rules = None
-        if snapshot is not None:
-            rules = json.loads(snapshot)
-        elif str(record["metadata"].get("test_id")) == str(exam_id):
-            rules = captured_rules
-        correct_pairs = review_correct_pairs(record, rules)
+        rules = review_rules(record, digest, exam_id, snapshot, result_id)
     except (OSError, ValueError):
         app.logger.exception("读取接线归档 %s 失败", digest)
         return "暂时无法读取接线记录，请稍后重试。", 503, {"Cache-Control": "no-store"}
-    return render_template("review.html", name=name, record=record, correct_pairs=correct_pairs,
+    return render_template("review.html", name=name, record=record, review_rules=rules,
                            scores_url=scores_url), 200, {"Cache-Control": "no-store"}
+
+
+@app.get("/simulations/cross-region/review")
+def cross_region_simulation_review():
+    filename = "simulations/cross-region.json"
+    record = json.loads((Path(app.static_folder) / filename).read_bytes())
+    metadata = record["metadata"]
+    rules = review_rules(record, None, metadata["test_id"], None, None)
+    return render_template("review.html", name=metadata["test_name"], record=record,
+                           review_rules=rules, archive_url=url_for("static", filename=filename))
 
 
 @app.route("/health", methods=["GET"])
