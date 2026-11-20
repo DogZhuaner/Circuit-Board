@@ -815,55 +815,13 @@
                                             </template>
                                         </g>
                                     </svg>
-                                    <div class="rule-canvas-scale" ref="ruleCanvasScale" :style="{gridTemplateColumns: ruleWirePlan.gaps.map(gap => gap + 'px minmax(0, 1fr)').join(' ')}">
-                                        <div v-for="(region, column) in ruleContactRegions" :key="region.name" class="rule-region"
-                                             :style="{gridColumn: 2 * column + 2, gridRow: '1 / span ' + region.rowCount}">
-                                            <div class="rule-region-title">
-                                                <strong>{{ region.title }}</strong>
-                                                <span>{{ region.contacts.length }} 个触点</span>
-                                            </div>
-                                            <template v-for="contact in region.contacts" :key="contact.name">
-                                                <div v-if="contact.groupTitle" class="rule-component-name" :style="{gridRow: contact.row - 1, marginTop: (ruleWirePlan.rowSpacing[contact.row - 1] || 0) + 'px'}">{{ contact.groupTitle }}</div>
-                                                <button type="button" class="rule-contact"
-                                                        :ref="el => setRuleContactRef(contact.name, el)"
-                                                        :style="{gridRow: contact.row, marginTop: (ruleWirePlan.rowSpacing[contact.row] || 0) + 'px'}"
-                                                        :class="{selected: ruleBuilder.selectedContact === contact.name}"
-                                                        :aria-pressed="ruleBuilder.selectedContact === contact.name"
-                                                        :title="contact.name" @click="handleRuleContactClick(contact.name)">
-                                                    <span class="rule-socket" aria-hidden="true"></span>
-                                                    <span>{{ contact.name }}</span>
-                                                    <span class="rule-socket" aria-hidden="true"></span>
-                                                </button>
-                                            </template>
-                                        </div>
-                                    </div>
+                                    {% endraw %}{% include 'wiring_panel/contacts.html' %}{% raw %}
                                 </div>
                             </div>
                         </div>
                         {% endraw %}
                     </div>
-                    <aside class="rule-summary">
-                        <h3>规则预览</h3>
-                        <div class="rule-list">
-                            {% raw %}
-                            <div v-if="exportedRules.length === 0" class="rule-empty">暂无规则</div>
-                            <div v-for="(wire, index) in ruleBuilder.wires" :key="wire.id" class="rule-preview-item" :style="{'--wire-color': wireColor(wire.id)}"
-                                 @mouseenter="ruleBuilder.highlightedWireId = wire.id" @mouseleave="ruleBuilder.highlightedWireId = null"
-                                 @focusin="ruleBuilder.highlightedWireId = wire.id" @focusout="ruleBuilder.highlightedWireId = null">
-                                <div class="rule-preview-head">
-                                    <strong>#{{ index + 1 }}</strong>
-                                    <label class="rule-preview-score">
-                                        <input type="number" min="0" step="1" required :aria-label="'第' + (index + 1) + '条规则分值'"
-                                               :value="wire.score" @input="updateWireScore(wire, $event.target)"
-                                               @blur="$event.target.value = wire.score" @keydown.enter="$event.target.blur()">
-                                        分
-                                    </label>
-                                </div>
-                                <div class="rule-preview-nodes">{{ wire.start }}、{{ wire.end }}</div>
-                            </div>
-                            {% endraw %}
-                        </div>
-                    </aside>
+                    {% include 'wiring_panel/preview.html' %}
                 </div>
             </div>
             <div class="modal-footer">
@@ -2259,250 +2217,12 @@
         background: #eff6ff;
     }
 
-    .rule-builder-layout {
-        flex: 1 1 auto;
-        min-height: 0;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) clamp(190px, 17vw, 260px);
-        gap: 12px;
-    }
+    {% include 'wiring_panel/panel.css' %}
+    {% include 'wiring_panel/preview.css' %}
 
-    .rule-panel {
-        position: relative;
-        min-height: 0;
-        height: 100%;
-        max-height: none;
-        overflow: auto;
-        padding: 12px;
-        background:
-            linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-            linear-gradient(0deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-            radial-gradient(circle at 22px 22px, rgba(37, 99, 235, 0.08) 1.5px, transparent 1.5px),
-            #edf3f8;
-        background-size: 18px 18px;
-        border: 1px solid #dbe4ee;
-        border-radius: 14px;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
-    }
-
-    .rule-wire-layer {
-        position: absolute;
-        left: 0;
-        top: 0;
-        z-index: 5;
-        overflow: visible;
-        pointer-events: none;
-    }
-
-    .rule-wire-group {
-        pointer-events: auto;
-        cursor: pointer;
-    }
-
-    .rule-wire-underlay {
-        fill: none;
-        stroke: rgba(255, 255, 255, 0.9);
-        stroke-width: 6;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-    }
-
-    .rule-wire-path {
-        fill: none;
-        stroke: var(--wire-color);
-        stroke-width: 2.6;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        filter: drop-shadow(0 2px 2px rgba(29, 78, 216, 0.22));
-    }
-
-    .rule-wire-terminal {
-        fill: #ffffff;
-        stroke: var(--wire-color);
-        stroke-width: 2;
-    }
-
-    .rule-canvas-frame { container-type: inline-size; }
-
-    .rule-canvas-content {
-        position: relative;
-        overflow: clip;
-    }
-
-    .rule-canvas-inner {
-        position: absolute;
-        inset: 0 auto auto 0;
-        transform-origin: top left;
-        width: max(740px, 100cqw);
-    }
-
-    .rule-canvas-scale {
-        display: grid;
-        position: relative;
-    }
-
-    .rule-wire-caption { pointer-events: none; }
-    .rule-wire-caption rect { fill: white; stroke: var(--wire-color); }
-    .rule-score-label {
-        fill: var(--wire-color);
-        font: 700 11px ui-monospace, monospace;
-        text-anchor: middle;
-        dominant-baseline: central;
-    }
-    .rule-preview-head strong { color: var(--wire-color); }
+    {% include 'wiring_panel/wires.css' %}
     .rule-duplicate-notice { color: #92400e; font-size: 13px; }
     .rule-duplicate-notice:empty { display: none; }
-
-    .rule-region {
-        --region-ink: #24577b;
-        min-width: 0;
-        display: grid;
-        /* Every contact shares its row tracks with the other three regions. */
-        grid-template-rows: subgrid;
-        grid-template-columns: minmax(0, 1fr);
-        padding-inline: 8px;
-        background: #f4f7f9;
-        box-shadow: inset 0 0 0 1px #cbd6dd;
-        border-radius: 10px;
-    }
-
-    .rule-region:nth-child(2) { --region-ink: #22665e; }
-    .rule-region:nth-child(3) { --region-ink: #705033; }
-    .rule-region:nth-child(4) { --region-ink: #5d4d80; }
-
-    .rule-region-title {
-        display: grid;
-        justify-items: center;
-        align-content: center;
-        margin-inline: -8px;
-        padding: 10px 12px;
-        border-radius: 10px 10px 0 0;
-        background: var(--region-ink);
-        color: #fff;
-        font-size: 15px;
-    }
-
-    .rule-region-title span {
-        font-size: 12px;
-        color: #ffffffdc;
-    }
-
-    .rule-component-name,
-    .rule-contact {
-        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    }
-
-    .rule-component-name {
-        align-content: center;
-        text-align: center;
-        padding: 3px 7px;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--region-ink);
-    }
-
-    .rule-contact {
-        display: grid;
-        grid-template-columns: 10px minmax(0, 1fr) 10px;
-        align-items: center;
-        gap: 6px;
-        min-height: 30px;
-        padding: 4px 7px;
-        border: 0;
-        border-top: 1px solid #e6ebef;
-        background: white;
-        color: #243647;
-        font-size: 13px;
-        line-height: 1.3;
-        text-align: center;
-        overflow-wrap: anywhere;
-        cursor: pointer;
-    }
-
-    .rule-socket {
-        position: relative;
-        width: 10px;
-        height: 10px;
-        border: 2px solid var(--region-ink);
-        border-radius: 50%;
-        background: #fff;
-    }
-
-    /* Keep connected sockets clickable above the SVG wire hit area. */
-    .rule-socket::after { content: ''; position: absolute; inset: -5px; z-index: 6; }
-
-    .rule-contact:hover { background: #eef4f8; }
-
-    .rule-contact.selected {
-        background: #dceaff;
-        color: #183e79;
-        font-weight: 700;
-    }
-
-    .rule-contact.selected .rule-socket {
-        border-color: #2454b7;
-        background: #2454b7;
-        box-shadow: inset 0 0 0 1px white;
-    }
-
-    .rule-contact:focus-visible {
-        outline: 2px solid #2454b7;
-        outline-offset: -2px;
-    }
-
-    .rule-summary {
-        height: 100%;
-        max-height: none;
-        overflow: auto;
-        padding: 14px;
-        background: rgba(255, 255, 255, 0.94);
-        border: 1px solid #dbe4ee;
-        border-radius: 14px;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-    }
-
-    .rule-summary h3 {
-        margin-bottom: 8px;
-        color: var(--primary-color);
-        font-size: 16px;
-        font-weight: 700;
-    }
-
-    .rule-preview-item {
-        padding: 10px;
-        margin-bottom: 8px;
-        background: linear-gradient(180deg, #ffffff, #f8fafc);
-        border: 1px solid #dbe4ee;
-        border-radius: 10px;
-        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
-    }
-
-    .rule-preview-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 6px;
-        color: #0f172a;
-    }
-
-    .rule-preview-score { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
-    .rule-preview-score input {
-        width: 64px; padding: 3px 5px; text-align: center; border: 1px solid #cbd5e1;
-        border-radius: 6px; color: #1e293b; background: white;
-    }
-    .rule-preview-nodes {
-        color: #475569;
-        font-size: 12px;
-        line-height: 1.5;
-    }
-
-    .rule-empty {
-        padding: 28px 12px;
-        text-align: center;
-        color: #94a3b8;
-        background: #f8fafc;
-        border-radius: 8px;
-    }
 
     @media (max-width: 1100px) {
         .rule-builder-modal {
@@ -2535,28 +2255,7 @@
 <script src="{{ url_for('static', filename='js/teaching.js') }}"></script>
 <script>
 const { createApp } = Vue;
-const RULE_CONTACT_REGIONS = [
-    {
-        name: 'region_001',
-        title: '区域一',
-        contacts: ['QS1-1','QS1-3','QS1-5','QS1-7','FU1-1','FU1-3','FU1-5','FU2-1','FU2-3','KT1-A1','KT1-1/L1','KT1-3/L2','KT1-5/L3','KT1-55/NC','KT1-67/NO','KT2-A1','KT2-1/L1','KT2-3/L2','KT2-5/L3','KT2-55/NC','KT2-67/NO','PLC-L','PLC-N','PLC-PE','PLC-L+','PLC-M','PLC-1M','PLC-I0.0','PLC-I0.1','PLC-I0.2','PLC-I0.3','PLC-I0.4','PLC-I0.5','PLC-I0.6','PLC-I0.7']
-    },
-    {
-        name: 'region_002',
-        title: '区域二',
-        contacts: ['QS1-2','QS1-4','QS1-6','QS1-8','FU1-2','FU1-4','FU1-6','FU2-2','FU2-4','KT1-A2','KT1-2/T1','KT1-4/T2','KT1-6/T3','KT1-56/NC','KT1-68/NO','KT2-A2','KT2-2/T1','KT2-4/T2','KT2-6/T3','KT2-56/NC','KT2-68/NO','PLC-1L','PLC-Q0.0','PLC-Q0.1','PLC-Q0.2','PLC-Q0.3','PLC-Q0.4','PLC-2L','PLC-Q0.5','PLC-Q0.6','PLC-Q0.7','L1','L2','L3','U2','V2','W2','5/DI0','6/DI1','7/DI2','8/DI3','16/DI14','17/DI15','28/GND/69DI COM1/34/DI COM2']
-    },
-    {
-        name: 'region_003',
-        title: '区域三',
-        contacts: ['KM1-A1','KM1-1/L1','KM1-3/L2','KM1-5/L3','KM1-13/NO','KM1-53/NO','KM1-61/NC','KM1-71/NC','KM1-83/NO','KM2-A1','KM2-1/L1','KM2-3/L2','KM2-5/L3','KM2-13/NO','KM2-53/NO','KM2-61/NC','KM2-71/NC','KM2-83/NO','KM3-A1','KM3-1/L1','KM3-3/L2','KM3-5/L3','KM3-13/NO','KM3-53/NO','KM3-61/NC','KM3-71/NC','KM3-83/NO','FR1-1/L1','FR1-3/L2','FR1-5/L3','FR2-1/L1','FR2-3/L2','FR2-5/L3','SB1-1/NC','SB1-2/NC','SB1-3/NO','SB1-4/NO','SB2-1/NC','SB2-2/NC','SB2-3/NO','SB2-4/NO','SB3-1/NC','SB3-2/NC','SB3-3/NO','SB3-4/NO','HL1-1','HL1-2','HL2-1','HL2-2','HL3-1','HL3-2']
-    },
-    {
-        name: 'region_004',
-        title: '区域四',
-        contacts: ['KM1-A2','KM1-2/T1','KM1-4/T2','KM1-6/T3','KM1-14/NO','KM1-54/NO','KM1-62/NC','KM1-72/NC','KM1-84/NO','KM2-A2','KM2-2/T1','KM2-4/T2','KM2-6/T3','KM2-14/NO','KM2-54/NO','KM2-62/NC','KM2-72/NC','KM2-84/NO','KM3-A2','KM3-2/T1','KM3-4/T2','KM3-6/T3','KM3-14/NO','KM3-54/NO','KM3-62/NC','KM3-72/NC','KM3-84/NO','FR1-2/T1','FR1-4/T2','FR1-6/T3','FR1-98/NO','FR1-97/NO','FR1-96/NC','FR1-95/NC','FR2-2/T1','FR2-4/T2','FR2-6/T3','FR2-98/NO','FR2-97/NO','FR2-96/NC','FR2-95/NC','XT1-1','XT1-2','XT1-3','XT1-4','XT1-5','XT1-6','XT2-1','XT2-2','XT2-3','XT2-4','XT2-5','XT2-6']
-    }
-];
+{% include 'wiring_panel/regions.js' %}
 const app = createApp({
     data() {
         return {
@@ -2741,25 +2440,7 @@ const app = createApp({
 
             return filtered;
         },
-        ruleContactRegions() {
-            const inverterContacts = new Set([
-                'L1', 'L2', 'L3', 'U2', 'V2', 'W2',
-                '5/DI0', '6/DI1', '7/DI2', '8/DI3',
-                '16/DI14', '17/DI15', '28/GND/69DI COM1/34/DI COM2'
-            ]);
-            return RULE_CONTACT_REGIONS.map(region => {
-                let lastGroup = '';
-                let row = 1;
-                const contacts = region.contacts.map(name => {
-                    const group = inverterContacts.has(name) ? 'INV' : name.split('-')[0];
-                    const groupTitle = group === lastGroup ? '' : group;
-                    lastGroup = group;
-                    if (groupTitle) row++;
-                    return { name, groupTitle, row: ++row };
-                });
-                return { ...region, contacts, rowCount: row };
-            });
-        },
+        ruleContactRegions: buildRuleContactRegions,
         ruleWirePlan() {
             return planRuleWireTracks(this.ruleContactRegions, this.ruleBuilder.wires);
         },
@@ -3077,60 +2758,8 @@ const app = createApp({
             }
         },
         getRuleWireRoutes(plan) {
-            const origin = this.$refs.ruleCanvasContent.getBoundingClientRect();
-            const zoom = this.ruleBuilder.zoom;
-            const regions = [...this.$refs.ruleCanvasScale.children];
-            const trackX = (gap, track) => {
-                const right = (regions[gap].getBoundingClientRect().left - origin.left) / zoom;
-                return right - plan.gaps[gap] + 9 + track * WIRE_TRACK_GAP;
-            };
-            const anchor = (button, right) => {
-                const socket = right ? button.lastElementChild : button.firstElementChild;
-                const rect = socket.getBoundingClientRect();
-                return { x: (rect.left + rect.width / 2 - origin.left) / zoom,
-                         y: (rect.top + rect.height / 2 - origin.top) / zoom };
-            };
-            const routes = plan.routes.map(route => {
-                const { wire } = route;
-                const from = this.ruleContactRefs[wire.start];
-                const to = this.ruleContactRefs[wire.end];
-                const start = anchor(from, route.startRight);
-                const end = anchor(to, route.endRight);
-                const startY = start.y + route.startOffset;
-                const endY = end.y + route.endOffset;
-                const points = [start];
-                if (route.startOffset) {
-                    const x = start.x + (route.startRight ? 6 : -6);
-                    points.push({ x, y: start.y }, { x, y: startY });
-                }
-                if (route.firstTrack !== undefined) {
-                    const x = trackX(route.firstGap, route.firstTrack);
-                    points.push({ x, y: startY });
-                    if (route.crossRow !== undefined) {
-                        const top = Math.min(from.getBoundingClientRect().top, to.getBoundingClientRect().top);
-                        const y = (top - origin.top) / zoom - 8 - route.crossTrack * WIRE_TRACK_GAP;
-                        const endX = trackX(route.lastGap, route.lastTrack);
-                        points.push({ x, y }, { x: endX, y }, { x: endX, y: endY });
-                    } else {
-                        points.push({ x, y: endY });
-                    }
-                } else if (Math.abs(startY - endY) > 0.01) {
-                    const x = (start.x + end.x) / 2;
-                    points.push({ x, y: startY }, { x, y: endY });
-                }
-                if (route.endOffset) {
-                    const x = end.x + (route.endRight ? 6 : -6);
-                    points.push({ x, y: endY }, { x, y: end.y });
-                }
-                points.push(end);
-                const path = points.map((p, i) => (i ? 'L' : 'M') + p.x + ' ' + p.y).join(' ');
-                return {
-                    id: wire.id, score: Number(wire.score), description: wire.start + ' ↔ ' + wire.end,
-                    points, path, start, end
-                };
-            });
-            placeRuleWireLabels(routes, this.ruleCanvas.width);
-            return routes;
+            return getRuleWireRoutes(plan, this.$refs.ruleCanvasContent, this.$refs.ruleCanvasScale,
+                name => this.ruleContactRefs[name], this.ruleBuilder.zoom, this.ruleCanvas.width);
         },
         selectRuleWire(wireId) {
             if (confirm('删除这条连线吗？')) {

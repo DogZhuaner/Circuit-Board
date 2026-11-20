@@ -9,51 +9,81 @@
     main {max-width:68rem;margin:auto;padding:2rem 1rem}
     article {background:white;border:1px solid #cadbd4;border-radius:1rem;padding:clamp(1rem,3vw,2rem)}
     {% include 'wiring_panel/panel.css' %}
-    #board {height:60vh;font-family:'Microsoft YaHei',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    {% include 'wiring_panel/preview.css' %}
+    {% include 'wiring_panel/wires.css' %}
+    #review-layout {--board-height:60vh}
+    .review-meta {align-self:center;margin:0}
+    .review-sidebar {display:flex;flex-direction:column;gap:8px;height:var(--board-height);min-width:0}
+    .review-sidebar .rule-summary {flex:1;min-height:0;height:auto}
+    .review-total {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;
+      padding:10px 14px;background:#fff;border:1px solid #dbe4ee;border-radius:14px}
+    .review-total output {font-weight:700;color:#176544;font-variant-numeric:tabular-nums}
+    @media (max-width:1100px) {
+      #review-layout {grid-template-columns:minmax(0,1fr)}
+      .review-sidebar {height:auto}
+      .review-sidebar .rule-summary {flex:auto;max-height:240px}
+    }
+    #wire-layer .rule-wire-group {pointer-events:none}
+    #wire-layer .removed .rule-wire-path, #wire-layer .removed .rule-wire-underlay {stroke-dasharray:6 5}
+    #wire-layer .current-wire {stroke-width:3}
+    #board {height:var(--board-height);font-family:'Microsoft YaHei',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
     #board .rule-contact:disabled {cursor:default;opacity:1}
     #board .rule-contact:disabled:not(.selected):hover {background:white}
     #wire-layer {position:absolute;inset:0;width:100%;height:100%;z-index:5;pointer-events:none}
-    #legacy {margin-top:12px}
-    #legacy .rule-region-title {margin:0}
-    #legacy .rule-contact {width:100%}
     .controls {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
     input[type=range] {flex:1;min-width:8rem;accent-color:#187348}
     .embedded {background:#f8fafc;color:#25334a}
     .embedded main {padding:0}
     .embedded article {padding:.75rem;border-color:#dbe3ee}
-    .embedded #board {height:48vh}
+    .embedded #review-layout {--board-height:48vh}
   </style>
 <script src="/static/js/session-navigation.js" defer></script>
 </head>
-<body{% if not scores_url %} class="embedded"{% endif %}><main>
+<body{% if not scores_url and not archive_url %} class="embedded"{% endif %}><main>
   {% if scores_url %}
     <a href="{{ scores_url }}" class="link-success">← 返回成绩可视化</a>
+  {% endif %}
+  {% if scores_url or archive_url %}
     <h1 class="h3 my-3">{{ name }} · 接线回顾</h1>
   {% endif %}
   <article>
-    <p>学号 {{ record.metadata.student_no }}　考试编号 {{ record.metadata.test_id }}{% if record.metadata.simulated is sameas true %}　<span class="badge text-bg-secondary">模拟记录</span>{% endif %}</p>
-    <div id="board" class="rule-panel" role="region" aria-label="接线规则端子板" tabindex="0">
-      <div class="rule-canvas-frame">
-        <div class="rule-canvas-content">
-          <div class="rule-canvas-inner" id="surface">
-            <svg id="wire-layer" aria-hidden="true"></svg>
-            <div id="catalog">
-              {% with review_mode=true %}{% include 'wiring_panel/contacts.html' %}{% endwith %}
-              {% raw %}
-              <section v-if="legacyNames.length" id="legacy" class="rule-region" :style="{marginLeft: ruleWirePlan.gaps[0] + 'px'}">
-                <div class="rule-region-title"><strong>记录中的其他端子</strong><span>{{ legacyNames.length }} 个触点</span></div>
-                <button v-for="name in legacyNames" :key="name" class="rule-contact" disabled
-                        :title="name" :data-contact="name" :ref="el => setRuleContactRef(name, el)">
-                  <span class="rule-socket" aria-hidden="true"></span><span>{{ name }}</span><span class="rule-socket" aria-hidden="true"></span>
-                </button>
-              </section>
-              {% endraw %}
-            </div>
-          </div>
-        </div>
+    <div id="review-layout" class="rule-builder-layout">
+      <p v-pre class="review-meta">
+        {% if archive_url %}
+        <span class="badge text-bg-secondary">模拟记录</span>　<a href="{{ archive_url }}" download>下载接线 JSON</a>
+        {% else %}
+        学号 {{ record.metadata.student_no }}　考试编号 {{ record.metadata.test_id }}{% if record.metadata.simulated is sameas true %}　<span class="badge text-bg-secondary">模拟记录</span>{% endif %}
+        {% endif %}
+      </p>
+      <div class="review-total">
+        <label for="rule-total">总得分</label>
+        <output id="rule-total" v-text="ruleScoreText"></output>
+      </div>
+      <div id="board" class="rule-panel" role="region" aria-label="接线规则端子板" tabindex="0">
+        <div class="rule-canvas-frame"><div class="rule-canvas-content"><div class="rule-canvas-inner" id="surface">
+          <svg id="wire-layer" aria-hidden="true">
+            <g v-for="wire in visibleWires" :key="wire.id" class="rule-wire-group" :class="{removed: wire.removed}"
+               :style="{'--wire-color': wire.color}">
+              <path :d="wire.path" class="rule-wire-underlay"></path>
+              <path :d="wire.path" class="rule-wire-path" :class="{'current-wire': wire.current}"></path>
+              <circle :cx="wire.start.x" :cy="wire.start.y" r="3.2" class="rule-wire-terminal"></circle>
+              <circle :cx="wire.end.x" :cy="wire.end.y" r="3.2" class="rule-wire-terminal"></circle>
+            </g>
+            <g v-for="wire in visibleWires" :key="'label-' + wire.id" class="rule-wire-caption" :style="{'--wire-color': wire.color}">
+              <template v-if="wire.label">
+                <rect :x="wire.label.x - wire.label.width / 2" :y="wire.label.y - 8" :width="wire.label.width" height="16" rx="4"></rect>
+                <text :x="wire.label.x" :y="wire.label.y" class="rule-score-label" v-text="wire.score"></text>
+              </template>
+            </g>
+          </svg>
+          {% with review_mode=true %}{% include 'wiring_panel/contacts.html' %}{% endwith %}
+        </div></div></div>
+      </div>
+      <div class="review-sidebar">
+        {% with review_mode=true %}{% include 'wiring_panel/preview.html' %}{% endwith %}
       </div>
     </div>
-    <p class="small text-secondary mt-2 mb-0">{% if correct_pairs is none %}缺少本场考试的规则记录，灰线表示无法判定正误。{% else %}绿线表示正确，红线表示错误。{% endif %}实线表示已连接，虚线表示本步撤销。</p>
+    <p class="small text-secondary mt-2 mb-0">{% if review_rules is none %}缺少本场考试的规则记录，灰线表示无法判定正误。{% else %}绿色实线表示正确接线，红色实线表示错误接线。{% endif %}本步撤销的连线用同色虚线显示。</p>
     <p class="my-3" id="description" aria-live="polite"></p>
     <div class="controls">
       <button id="play" class="btn btn-success">播放</button>
@@ -67,8 +97,9 @@
   </article>
 </main>
 <script type="application/json" id="record">{{ record|tojson }}</script>
-<script type="application/json" id="correct-pairs">{{ correct_pairs|tojson }}</script>
+<script type="application/json" id="review-rules">{{ review_rules|tojson }}</script>
 <script src="{{ url_for('static', filename='js/vue.global.js') }}"></script>
+<script src="/teacher/static/js/rule-wire-layout.js"></script>
 <script>{% include 'wiring_panel/regions.js' %}</script>
 <script src="{{ url_for('static', filename='js/wiring-review.js') }}"></script>
 </body></html>

@@ -109,3 +109,59 @@ function placeRuleWireLabels(routes, width) {
         }
     }
 }
+
+function getRuleWireRoutes(plan, canvas, grid, contact, zoom, width) {
+    const origin = canvas.getBoundingClientRect();
+    const regions = [...grid.children];
+    const trackX = (gap, track) => {
+        const right = (regions[gap].getBoundingClientRect().left - origin.left) / zoom;
+        return right - plan.gaps[gap] + 9 + track * WIRE_TRACK_GAP;
+    };
+    const anchor = (button, right) => {
+        const socket = right ? button.lastElementChild : button.firstElementChild;
+        const rect = socket.getBoundingClientRect();
+        return { x: (rect.left + rect.width / 2 - origin.left) / zoom,
+                 y: (rect.top + rect.height / 2 - origin.top) / zoom };
+    };
+    const routes = plan.routes.map(route => {
+        const { wire } = route;
+        const from = contact(wire.start);
+        const to = contact(wire.end);
+        const start = anchor(from, route.startRight);
+        const end = anchor(to, route.endRight);
+        const startY = start.y + route.startOffset;
+        const endY = end.y + route.endOffset;
+        const points = [start];
+        if (route.startOffset) {
+            const x = start.x + (route.startRight ? 6 : -6);
+            points.push({ x, y: start.y }, { x, y: startY });
+        }
+        if (route.firstTrack !== undefined) {
+            const x = trackX(route.firstGap, route.firstTrack);
+            points.push({ x, y: startY });
+            if (route.crossRow !== undefined) {
+                const top = Math.min(from.getBoundingClientRect().top, to.getBoundingClientRect().top);
+                const y = (top - origin.top) / zoom - 8 - route.crossTrack * WIRE_TRACK_GAP;
+                const endX = trackX(route.lastGap, route.lastTrack);
+                points.push({ x, y }, { x: endX, y }, { x: endX, y: endY });
+            } else {
+                points.push({ x, y: endY });
+            }
+        } else if (Math.abs(startY - endY) > 0.01) {
+            const x = (start.x + end.x) / 2;
+            points.push({ x, y: startY }, { x, y: endY });
+        }
+        if (route.endOffset) {
+            const x = end.x + (route.endRight ? 6 : -6);
+            points.push({ x, y: endY }, { x, y: end.y });
+        }
+        points.push(end);
+        const path = points.map((p, i) => (i ? 'L' : 'M') + p.x + ' ' + p.y).join(' ');
+        return {
+            id: wire.id, score: Number(wire.score), description: wire.start + ' ↔ ' + wire.end,
+            points, path, start, end
+        };
+    });
+    placeRuleWireLabels(routes, width);
+    return routes;
+}

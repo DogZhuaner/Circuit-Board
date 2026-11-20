@@ -1,3 +1,4 @@
+from jinja2 import ChoiceLoader, FileSystemLoader, PrefixLoader
 from flask import Flask, render_template, request, redirect, jsonify, send_from_directory, session
 import os
 from flask_socketio import SocketIO, emit
@@ -121,6 +122,10 @@ def get_config_module():
 
 
 app = Flask(__name__)
+app.jinja_loader = ChoiceLoader([
+    app.jinja_loader,
+    PrefixLoader({"wiring_panel": FileSystemLoader(os.path.join(parent_dir, "templates", "wiring_panel"))}),
+])
 app.config.update(SECRET_KEY=STUDENT_WEB_CONFIG["secret_key"], SESSION_COOKIE_NAME="circuit_entry")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 

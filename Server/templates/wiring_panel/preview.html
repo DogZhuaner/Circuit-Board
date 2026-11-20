@@ -1,0 +1,29 @@
+{% set rule_number = 'wire.id' if review_mode else '(index + 1)' %}
+<aside class="rule-summary" aria-label="规则预览">
+    <h3>规则预览</h3>
+    <div class="rule-list">
+        {% if not review_mode or not review_rules %}
+        <div v-if="!ruleBuilder.wires.length" class="rule-empty">{% if review_mode and review_rules is none %}缺少本场考试的规则记录{% else %}暂无规则{% endif %}</div>
+        {% endif %}
+        <div v-for="(wire, index) in ruleBuilder.wires" :key="wire.id" class="rule-preview-item"
+             :style="{'--wire-color': wireColor(wire.id)}"
+             {% if not review_mode %}@mouseenter="ruleBuilder.highlightedWireId = wire.id" @mouseleave="ruleBuilder.highlightedWireId = null"
+             @focusin="ruleBuilder.highlightedWireId = wire.id" @focusout="ruleBuilder.highlightedWireId = null"{% endif %}>
+            <div class="rule-preview-head">
+                <strong v-text="'#' + {{ rule_number }}"></strong>
+                {% if review_mode %}
+                <span class="rule-preview-score" v-if="wire.score != null" v-text="wire.score + ' 分'"></span>
+                {% else %}
+                <label class="rule-preview-score">
+                    <input type="number" :aria-label="'第' + {{ rule_number }} + '条规则分值'" :value="wire.score"
+                           min="0" step="1" required
+                           @input="updateWireScore(wire, $event.target)" @blur="$event.target.value = wire.score"
+                           @keydown.enter="$event.target.blur()">
+                    分
+                </label>
+                {% endif %}
+            </div>
+            <div class="rule-preview-nodes" v-text="wire.start + '、' + wire.end"></div>
+        </div>
+    </div>
+</aside>
