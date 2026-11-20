@@ -9,7 +9,6 @@ class Global_Config:
     history_capture_dir = str(ProjectRoot/ 'image' / 'Hand_capture')
     #data
     rule_path = ProjectRoot/'data'/'rules'
-    test_rule = ProjectRoot/'data'/'rules'/'current_rule.json'
     union_find_json_path = ProjectRoot/'data'/'union_find.json'
     rule_csv_path = ProjectRoot/'data'/'rule.csv'
     label_csv = str(ProjectRoot/'data'/'label.csv')

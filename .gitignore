@@ -52,3 +52,7 @@ Thumbs.db
 Client/data/recordings/
 
 Server/data/recordings/
+
+Server/data/model_settings/
+
+Client/data/rules/current_rule.selection

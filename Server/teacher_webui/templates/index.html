@@ -669,13 +669,13 @@
                             <i class="bi bi-file-earmark-code rule-file-icon" aria-hidden="true"></i>
                             <span class="rule-file-info">
                                 <strong>{{ file.filename }}</strong>
-                                <small>{{ file.rule_count ?? '—' }} 条规则<span v-if="file.is_current" class="rule-current">当前启用</span></small>
+                                <small>{{ file.rule_count ?? '—' }} 条规则<span v-if="file.is_current" class="rule-current">练习默认</span></small>
                             </span>
                         </button>
                     </div>
                     <select v-if="ruleFiles.length" class="rule-file-picker" aria-label="选择规则文件"
                             :value="selectedRuleFilename" @change="selectRuleFile($event.target.value)">
-                        <option v-for="file in ruleFiles" :key="file.filename" :value="file.filename">{{ file.filename }} · {{ file.rule_count ?? '—' }} 条{{ file.is_current ? ' · 当前启用' : '' }}</option>
+                        <option v-for="file in ruleFiles" :key="file.filename" :value="file.filename">{{ file.filename }} · {{ file.rule_count ?? '—' }} 条{{ file.is_current ? ' · 练习默认' : '' }}</option>
                     </select>
                     <div v-if="!ruleFiles.length" class="rule-manager-empty">{{ ruleManagerLoading ? '正在读取…' : '暂无规则文件' }}</div>
                 </aside>
@@ -693,12 +693,12 @@
                         </header>
                         <div v-show="ruleFileToolsOpen" class="rule-file-tools" id="ruleFileTools">
                             <form class="rule-rename-row" @submit.prevent="renameManagedRuleFile">
-                                <input aria-label="新文件名" type="text" v-model="ruleRenameValue" :disabled="selectedRuleFilename === 'current_rule.json'">
-                                <button class="rule-tool" :disabled="selectedRuleFilename === 'current_rule.json'">重命名</button>
+                                <input aria-label="新文件名" type="text" v-model="ruleRenameValue">
+                                <button class="rule-tool">重命名</button>
                             </form>
                             <div class="rule-file-actions">
-                                <button type="button" class="rule-tool" @click="activateManagedRule">设为当前规则</button>
-                                <button type="button" class="rule-tool rule-delete-file" @click="deleteManagedRuleFile" :disabled="selectedRuleFilename === 'current_rule.json'">删除文件</button>
+                                <button type="button" class="rule-tool" @click="activateManagedRule">设为默认练习规则</button>
+                                <button type="button" class="rule-tool rule-delete-file" @click="deleteManagedRuleFile">删除文件</button>
                             </div>
                         </div>
                         <div class="roster-heading rule-table-heading">
@@ -2971,10 +2971,6 @@ const app = createApp({
         },
         deleteManagedRuleFile() {
             if (!this.selectedRuleFilename) return;
-            if (this.selectedRuleFilename === 'current_rule.json') {
-                alert('current_rule.json 是当前启用规则，不允许删除');
-                return;
-            }
             if (!confirm(`确定删除规则文件 ${this.selectedRuleFilename} 吗？`)) {
                 return;
             }

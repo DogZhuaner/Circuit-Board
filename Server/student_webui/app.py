@@ -1,11 +1,9 @@
 import os
 import sys
 import json
-import re
 from contextlib import closing
-from ipaddress import IPv6Address
 from datetime import datetime
-from flask import abort, Flask, render_template, jsonify, redirect, request, send_file, session
+from flask import abort, Flask, render_template, jsonify, redirect, request, session, url_for
 from flask_socketio import SocketIO
 
 # 添加项目根目录到Python路径
@@ -18,9 +16,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../s
 
 from itsdangerous import BadSignature
 from db import MySQLConnector as StudentDatabase
-from exam_results import exam_result
+from exam_results import exam_result, verified_receipt
 from exam_access import ExamEntryError, exam_ticket, exam_rule_ticket, require_open_exam
 from global_config import Global_Config
+from practice_rules import default_rule
 try:
     from script.detect_SwtichHand import start_hand_detection, stop_hand_detection
 except Exception:
@@ -29,20 +28,17 @@ except Exception:
 
 # 添加tools目录到Python路径
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../tools')))
+from student_webui.model_service import models, public_settings, read_settings
 from tools.connector import MySQLConnector
 from tools.config import (
     portal_login_url,
-    FRONTEND_OLLAMA_DEFAULTS,
     LOCAL_CLIENT_BASE as CONFIG_LOCAL_CLIENT_BASE,
-    OLLAMA_CHAT_DEFAULTS,
-    OLLAMA_QUESTION_DEFAULTS,
     RULE_SERVER_CONFIG,
     STUDENT_WEB_CONFIG,
 )
 
 # 导入项目模块 - 使用延迟导入提高启动速度
 detect_module = None
-rag_module = None
 config_module = None
 question_generator = None
 score_visualizer = None
@@ -70,18 +66,6 @@ def reset_contact_status():
     shutil.copy(default_csv, Global_Config.result_csv_path)
     shutil.copy(default_csv, csv_path)
     print("接线状态已重置，请重新开始接线。")
-
-
-def get_rag_module():
-    global rag_module
-    if rag_module is None:
-        try:
-            from scripts.RAG_ui import answer_with_ollama
-            rag_module = answer_with_ollama
-        except ImportError:
-            print("警告: 无法导入RAG_ui模块，将使用模拟AI回答")
-            rag_module = lambda question: f"模拟AI回答: {question} (请检查Ollama服务是否运行)"
-    return rag_module
 
 
 def get_config_module():
@@ -149,6 +133,7 @@ def get_score_visualizer():
 
 
 app = Flask(__name__)
+app.register_blueprint(models)
 app.config.update(SECRET_KEY=STUDENT_WEB_CONFIG["secret_key"], SESSION_COOKIE_NAME="circuit_entry")
 socketio = SocketIO(app, cors_allowed_origins="*", transports=['websocket', 'polling'])
 
@@ -187,35 +172,6 @@ def resolve_rule_file(filename):
     if os.path.commonpath([rule_dir, file_path]) != rule_dir:
         raise ValueError('规则文件路径无效')
     return safe_name, file_path
-
-
-def format_rules_json(rules):
-    lines = ['[']
-    for index, rule in enumerate(rules):
-        comma = ',' if index < len(rules) - 1 else ''
-        nodes = json.dumps(rule['nodes'], ensure_ascii=False)
-        lines.extend([
-            '  {',
-            f'    "id": {rule["id"]},',
-            f'    "nodes": {nodes},',
-            f'    "score": {rule["score"]}',
-            f'  }}{comma}',
-        ])
-    lines.append(']')
-    return '\n'.join(lines) + '\n'
-
-
-def current_rule_response_fields():
-    current_rule_path = os.path.abspath(str(Global_Config.test_rule))
-    download_url = f"{request.script_root}/api/rules/current/download"
-    if not download_url.startswith("/"):
-        download_url = f"/{download_url}"
-    return {
-        "active_filename": os.path.basename(current_rule_path),
-        "active_rule_path": current_rule_path,
-        "download_url": download_url,
-        "download_url_absolute": f"{request.host_url.rstrip('/')}{download_url}",
-    }
 
 
 def validate_rule_payload(rules):
@@ -285,17 +241,7 @@ def index():
     student = session.get('student')
     if not student:
         return redirect(portal_login_url(request.host_url, request.script_root))
-    try:
-        with closing(StudentDatabase()) as db:
-            rows = db.query(
-                'SELECT DISTINCT c.name FROM class_student m JOIN teaching_class c ON c.id=m.class_id '
-                'WHERE m.student_no=%s ORDER BY c.name', (student['id'],)
-            )
-        class_label = '、'.join(name for name, in rows) or '暂未分班'
-    except RuntimeError:
-        app.logger.exception('读取练习页学生班级失败')
-        class_label = '暂时无法读取'
-    return render_student_page(student['id'], student['name'], class_label=class_label), 200, {'Cache-Control': 'no-store'}
+    return render_student_page(student['id'], student['name']), 200, {'Cache-Control': 'no-store'}
 
 
 def exam_identity() -> tuple:
@@ -310,6 +256,8 @@ def exam_identity() -> tuple:
 
 @app.get('/exam')
 def exam_page():
+    if not session.get('exam_entry_ticket') or session['exam_entry_ticket'] != request.args.get('ticket'):
+        return redirect('/entry?mode=exam')
     try:
         exam_id, student_id, student_name = exam_identity()
         exam = require_open_exam(exam_id, student_id)
@@ -323,11 +271,29 @@ def exam_page():
 def check_exam_entry():
     try:
         exam_id, student_id, student_name = exam_identity()
-        rule_ticket = exam_rule_ticket(exam_id, student_id)
+        rule_ticket = exam_rule_ticket(exam_id, student_id, close_submission={
+            'path': url_for('submit_closed_exam'), 'ticket': request.args['ticket']
+        })
         score = exam_result(exam_id, student_id, student_name)
     except ExamEntryError as error:
         return jsonify(success=False, message=str(error)), error.status
     return jsonify(success=True, submitted_score=score, rule_ticket=rule_ticket), 200, {'Cache-Control': 'no-store'}
+
+
+@app.post('/api/exam/closed-result')
+def submit_closed_exam():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not all(isinstance(body.get(k), str) for k in ('ticket', 'receipt', 'archive')):
+        return jsonify(success=False, message='缺少交卷凭据或接线记录'), 400
+    try:
+        exam_id, student_id, name = exam_ticket.loads(body['ticket'])
+        verified_receipt(body['receipt'], student_id, exam_id)
+        score = exam_result(exam_id, student_id, name, submission=body)
+    except BadSignature:
+        return jsonify(success=False, message='考试凭据无效'), 403
+    except ExamEntryError as error:
+        return jsonify(success=False, message=str(error)), error.status
+    return jsonify(success=True, score=score), 200, {'Cache-Control': 'no-store'}
 
 
 @app.route('/api/exam/result', methods=['GET', 'POST'])
@@ -344,13 +310,23 @@ def submit_exam_result():
     return jsonify(success=True, score=score), 200, {'Cache-Control': 'no-store'}
 
 
-def render_student_page(student_id, student_name, exam=None, submitted_score=None, *, class_label=None):
+def render_student_page(student_id, student_name, exam=None, submitted_score=None):
+    try:
+        with closing(StudentDatabase()) as db:
+            rows = db.query(
+                'SELECT DISTINCT c.name FROM class_student m JOIN teaching_class c ON c.id=m.class_id '
+                'WHERE m.student_no=%s ORDER BY c.name', (student_id,)
+            )
+        class_label = '、'.join(name for name, in rows) or '暂未分班'
+    except RuntimeError:
+        app.logger.exception('读取学生班级失败')
+        class_label = '暂时无法读取'
     return render_template(
         'index.html',
         local_client_base=LOCAL_CLIENT_BASE,
         selected_exam=exam,
         submitted_score=submitted_score,
-        frontend_ollama_defaults=FRONTEND_OLLAMA_DEFAULTS,
+        practice_model_settings=public_settings(read_settings(student_id)) if exam is None else None,
         initial_student_info={
             'student_id': student_id,
             'student_name': student_name,
@@ -373,14 +349,7 @@ def list_rule_files():
     """获取可选考核规则文件列表。"""
     try:
         rule_dir = get_rule_directory()
-        current_rule_path = os.path.abspath(str(Global_Config.test_rule))
-        current_rules = None
-        if os.path.exists(current_rule_path):
-            try:
-                with open(current_rule_path, 'r', encoding='utf-8') as f:
-                    current_rules = validate_rule_payload(json.load(f))
-            except Exception:
-                current_rules = None
+        default_name = default_rule(rule_dir)
         files = []
 
         for filename in sorted(os.listdir(rule_dir), key=lambda name: name.lower()):
@@ -406,7 +375,7 @@ def list_rule_files():
                 'rule_count': rule_count,
                 'size': stat.st_size,
                 'modified_time': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                'is_current': bool(current_rules is not None and rules == current_rules)
+                'is_current': filename == default_name
             })
 
         return jsonify({'success': True, 'files': files, 'total': len(files)})
@@ -414,139 +383,57 @@ def list_rule_files():
         return jsonify({'success': False, 'message': f'获取规则文件列表失败：{str(e)}'}), 500
 
 
-@app.route('/api/rules/activate', methods=['POST'])
+@app.post('/api/rules/activate')
 def activate_rule_file():
-    """选择一个现有规则文件作为当前评判标准。"""
     try:
-        data = request.get_json() or {}
-        safe_name, source_path = resolve_rule_file(data.get('filename'))
-        if not os.path.exists(source_path):
-            return jsonify({'success': False, 'message': f'规则文件不存在：{safe_name}'}), 404
-
-        with open(source_path, 'r', encoding='utf-8') as f:
-            rules = validate_rule_payload(json.load(f))
-
-        current_rule_path = os.path.abspath(str(Global_Config.test_rule))
-        rule_dir = get_rule_directory()
-        if os.path.commonpath([rule_dir, current_rule_path]) != rule_dir:
-            return jsonify({'success': False, 'message': '当前规则路径无效'}), 400
-
-        with open(current_rule_path, 'w', encoding='utf-8') as f:
-            f.write(format_rules_json(rules))
-
-        return jsonify({
-            'success': True,
-            'message': f'已选择 {safe_name} 作为当前评判规则',
-            'filename': safe_name,
-            'rules_count': len(rules),
-            **current_rule_response_fields(),
-        })
-    except ValueError as e:
-        return jsonify({'success': False, 'message': str(e)}), 400
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'选择规则文件失败：{str(e)}'}), 500
+        name, path = resolve_rule_file((request.get_json(silent=True) or {}).get('filename'))
+        if not os.path.isfile(path) or name.lower() == 'current_rule.json':
+            return jsonify(success=False, message='所选规则文件不存在'), 404
+        return jsonify(success=True, filename=name, download_url=url_for('download_rule_file', filename=name))
+    except ValueError as error:
+        return jsonify(success=False, message=str(error)), 400
 
 
-@app.route('/api/rules/current', methods=['GET'])
-def get_current_rule_file():
-    """获取当前启用规则的 JSON 内容。"""
+@app.get('/api/rules/files/<filename>/download')
+def download_rule_file(filename):
     try:
-        current_rule_path = os.path.abspath(str(Global_Config.test_rule))
-        rule_dir = get_rule_directory()
-        if os.path.commonpath([rule_dir, current_rule_path]) != rule_dir:
-            return jsonify({'success': False, 'message': '当前规则路径无效'}), 400
-        if not os.path.exists(current_rule_path):
-            return jsonify({'success': False, 'message': '当前规则文件不存在'}), 404
-
-        with open(current_rule_path, 'r', encoding='utf-8') as f:
-            rules = validate_rule_payload(json.load(f))
-
-        return jsonify({
-            'success': True,
-            'filename': os.path.basename(current_rule_path),
-            'rules': rules,
-            'raw': format_rules_json(rules),
-            'rules_count': len(rules),
-            **current_rule_response_fields(),
-        })
-    except ValueError as e:
-        return jsonify({'success': False, 'message': str(e)}), 400
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'读取当前规则失败：{str(e)}'}), 500
-
-
-@app.route('/api/rules/current/download', methods=['GET'])
-def download_current_rule_file():
-    """下载当前启用规则文件，供本地网关拉取到本机。"""
+        name, path = resolve_rule_file(filename)
+    except ValueError:
+        abort(404)
+    if filename != name or name.lower() == 'current_rule.json' or not os.path.isfile(path):
+        abort(404)
     try:
-        current_rule_path = os.path.abspath(str(Global_Config.test_rule))
-        rule_dir = get_rule_directory()
-        if os.path.commonpath([rule_dir, current_rule_path]) != rule_dir:
-            return jsonify({'success': False, 'message': '当前规则路径无效'}), 400
-        if not os.path.exists(current_rule_path):
-            return jsonify({'success': False, 'message': '当前规则文件不存在'}), 404
-
-        return send_file(
-            current_rule_path,
-            mimetype='application/json',
-            as_attachment=True,
-            download_name='current_rule.json',
-        )
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'下载当前规则失败：{str(e)}'}), 500
+        with open(path, encoding='utf-8') as source:
+            rules = validate_rule_payload(json.load(source))
+    except (ValueError, OSError):
+        return jsonify(success=False, message='规则文件无效或无法读取'), 422
+    return jsonify(rules), 200, {'Cache-Control': 'no-store'}
 
 
-@app.route('/api/ai_chat', methods=['POST'])
-def ai_chat():
-    """AI对话接口 - 使用Ollama模型"""
+@app.get('/api/rules/current')
+def get_default_rule():
+    name = default_rule(get_rule_directory())
+    if not name:
+        return jsonify(success=False, message='未选择默认练习规则'), 404
+    _, path = resolve_rule_file(name)
     try:
-        import requests
+        with open(path, encoding='utf-8') as source:
+            raw = source.read()
+        rules = validate_rule_payload(json.loads(raw))
+    except (OSError, ValueError):
+        return jsonify(success=False, message='规则文件无效或无法读取'), 422
+    return jsonify(success=True, filename=name, active_filename=name, active_rule_path=path,
+                   rules=rules, rules_count=len(rules), raw=raw,
+                   download_url=url_for('download_rule_file', filename=name),
+                   download_url_absolute=url_for('download_rule_file', filename=name, _external=True))
 
-        data = request.get_json()
-        question = data.get('question', '').strip()
-        ip = data.get('ip', OLLAMA_CHAT_DEFAULTS["host"])
-        port = data.get('port', OLLAMA_CHAT_DEFAULTS["port"])
-        model_name = data.get('model_name', OLLAMA_CHAT_DEFAULTS["model"])
 
-        if not question:
-            return jsonify({'success': False, 'message': '请输入问题'})
-
-        # 组装对话prompt
-        prompt = f"""你是一个智能的AI助手，专门帮助学生解答问题。请用友好、专业的态度回答以下问题：
-
-问题：{question}
-
-请提供详细、准确的回答："""
-
-        # 调用Ollama API
-        url = f"http://{ip}:{port}/api/generate"
-        payload = {
-            "model": model_name,
-            "prompt": prompt,
-            "stream": False
-        }
-
-        try:
-            response = requests.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-
-            # 获取生成的回答
-            answer = result.get('response', '抱歉，我暂时无法回答这个问题。')
-
-            return jsonify({
-                'success': True,
-                'answer': answer,
-                'timestamp': datetime.now().strftime('%H:%M:%S')
-            })
-
-        except requests.exceptions.RequestException as e:
-            return jsonify({'success': False, 'message': f'Ollama服务连接失败: {str(e)}'})
-        except Exception as e:
-            return jsonify({'success': False, 'message': f'Ollama调用失败: {str(e)}'})
-
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'AI对话出错: {str(e)}'})
+@app.get('/api/rules/current/download')
+def download_default_rule():
+    name = default_rule(get_rule_directory())
+    if not name:
+        return jsonify(success=False, message='未选择默认练习规则'), 404
+    return download_rule_file(name)
 
 
 # 新增：题目生成相关路由
@@ -627,159 +514,6 @@ def generate_multiple_questions():
         return jsonify({'success': True, 'questions': questions})
     except Exception as e:
         return jsonify({'success': False, 'message': f'生成题目失败: {str(e)}'})
-
-
-# 新增：使用Ollama生成题目
-@app.route('/api/generate_question_by_ollama', methods=['POST'])
-def generate_question_by_ollama():
-    """使用Ollama大模型生成题目"""
-    try:
-        import requests
-
-        data = request.get_json()
-        ip = data.get('ip', OLLAMA_QUESTION_DEFAULTS["host"])
-        port = data.get('port', OLLAMA_QUESTION_DEFAULTS["port"])
-        model_name = data.get('model_name', OLLAMA_QUESTION_DEFAULTS["model"])
-        subject_filter = data.get('subject', '电力拖动系统')  # 默认学科为电力拖动系统
-        knowledge_filter = data.get('knowledge', '')  # 可选的知识点过滤
-
-        # 如果没有指定知识点，使用默认知识点
-        if not knowledge_filter:
-            knowledge_filter = '电力拖动系统'
-
-        # 组装prompt - 生成2道选择题+2道填空题+1道简答题
-        prompt = f"""请根据以下知识点为电力拖动系统专业学生生成2道选择题、2道填空题和1道简答题：
-
-学科：{subject_filter}
-知识点：{knowledge_filter}
-
-请严格按照以下格式生成题目，**不要添加任何额外的分隔符、标记或解释性文字**：
-
-选择题1：
-题目：题干内容
-A. 选项A
-B. 选项B
-C. 选项C
-D. 选项D
-答案：A/B/C/D
-解析：详细解析
-
-选择题2：
-题目：题干内容
-A. 选项A
-B. 选项B
-C. 选项C
-D. 选项D
-答案：A/B/C/D
-解析：详细解析
-
-填空题1：
-题目：题干内容
-答案：参考答案
-解析：详细解析
-
-填空题2：
-题目：题干内容
-答案：参考答案
-解析：详细解析
-
-简答题：
-题目：题干内容
-答案：参考答案
-解析：详细解析
-
-要求：
-1. 题目要专业准确，符合电力拖动系统教学要求
-2. 选择题选项要合理，有干扰性
-3. 填空题要考察学生对知识点的记忆和理解
-4. 简答题要考察学生对知识点的深入理解和应用能力
-5. 解析要详细，帮助学生理解知识点
-6. **非常重要：不要生成任何额外的分隔符（如###、===等）或装饰性文本，只生成符合上述格式的题目内容**"""
-
-        # 调用Ollama API
-        url = f"http://{ip}:{port}/api/generate"
-        payload = {
-            "model": model_name,
-            "prompt": prompt,
-            "stream": False
-        }
-
-        try:
-            response = requests.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-
-            # 解析返回的题目内容
-            generated_text = result.get('response', '')
-
-            # 简单的格式解析
-            question_data = {
-                'subject': subject_filter,
-                'knowledge': knowledge_filter,
-                'question': generated_text,
-                'raw_response': generated_text
-            }
-
-            return jsonify({'success': True, 'question': question_data})
-
-        except requests.exceptions.RequestException as e:
-            return jsonify({'success': False, 'message': f'Ollama服务连接失败: {str(e)}'})
-        except Exception as e:
-            return jsonify({'success': False, 'message': f'Ollama调用失败: {str(e)}'})
-
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'生成题目失败: {str(e)}'})
-
-
-@app.route('/api/test_ollama_connection', methods=['POST'])
-def test_ollama_connection():
-    """Verify the Ollama service before reading its installed models."""
-    import requests
-
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify(success=False, message='请填写模型服务地址和端口号。'), 400
-    host = str(data.get('ip', '')).strip()
-    port = str(data.get('port', ''))
-    if not re.fullmatch(r'[0-9]{1,5}', port) or not 1 <= int(port) <= 65535:
-        return jsonify(success=False, message='端口号须在 1 到 65535 之间。'), 400
-    if ':' in host:
-        try:
-            address = host[1:-1] if host.startswith('[') and host.endswith(']') else host
-            if '%' in address:
-                raise ValueError
-            host = f'[{IPv6Address(address)}]'
-        except ValueError:
-            return jsonify(success=False, message='请单独填写 IP 地址或主机名。'), 400
-    elif len(host) > 253 or not all(
-        re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
-        for label in host.rstrip('.').split('.')
-    ) or host.endswith('..'):
-        return jsonify(success=False, message='请单独填写 IP 地址或主机名。'), 400
-
-    base = f'http://{host}:{port}/api'
-    try:
-        response = requests.get(f'{base}/version', timeout=5, allow_redirects=False)
-        version = response.json() if response.status_code == 200 else None
-        if not isinstance(version, dict) or not isinstance(version.get('version'), str) or not version['version']:
-            raise ValueError
-    except (requests.RequestException, ValueError):
-        return jsonify(success=False, message='无法连接 Ollama 服务，请检查地址、端口和服务状态。'), 502
-
-    try:
-        response = requests.get(f'{base}/tags', timeout=8, allow_redirects=False)
-        payload = response.json() if response.status_code == 200 else None
-        if not isinstance(payload, dict) or not isinstance(payload.get('models'), list):
-            raise ValueError
-        names = list(dict.fromkeys(item['name'] for item in payload['models']
-                                   if isinstance(item, dict) and isinstance(item.get('name'), str) and item['name']))
-    except (requests.RequestException, ValueError):
-        return jsonify(success=False, message='已连接，但获取模型列表失败，请重试。'), 502
-
-    requested = data.get('model_name')
-    if requested and requested not in names:
-        return jsonify(success=False, models=names, message=f'模型 {requested} 不在可用列表中。')
-    return jsonify(success=True, host=host, models=names, message='连接成功')
 
 
 # 新增：数据可视化相关路由

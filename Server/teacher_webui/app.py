@@ -16,6 +16,7 @@ from tools.config import DB_CONFIG, RULE_SERVER_CONFIG, TEACHER_WEB_CONFIG, STUD
 from contextlib import closing
 from mysql.connector import Error, IntegrityError
 from db import MySQLConnector as RosterDatabase
+from practice_rules import default_rule, set_default_rule
 from teacher_webui.teaching import FormError, set_student_class, teaching_routes
 
 try:
@@ -181,6 +182,8 @@ def normalize_rule_filename(filename):
 
     if not filename.lower().endswith('.json'):
         filename += '.json'
+    if filename.lower() == 'current_rule.json':
+        raise ValueError('请选择命名的规则文件')
     return filename
 
 
@@ -287,7 +290,8 @@ def rule_download_service():
     global_config = config['Global_Config']
 
     # 获取规则文件路径和服务器信息
-    rule_file_path = str(global_config.test_rule)
+    name = default_rule(global_config.rule_path)
+    rule_file_path = os.path.join(global_config.rule_path, name) if name else ''
     server_ip = global_config.rule_server_ip
     server_port = global_config.rule_server_port
 
@@ -323,18 +327,14 @@ def save_rule_file():
         os.makedirs(rule_dir, exist_ok=True)
 
         file_path = os.path.join(rule_dir, filename)
-        current_rule_path = os.path.join(rule_dir, 'current_rule.json')
-
-        for target_path in (file_path, current_rule_path):
-            with open(target_path, 'w', encoding='utf-8') as f:
-                f.write(format_rules_json(rules))
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(format_rules_json(rules))
 
         return jsonify({
             'success': True,
             'message': '规则文件保存成功',
             'filename': filename,
             'path': file_path,
-            'active_rule_path': current_rule_path,
             'rules_count': len(rules)
         })
     except ValueError as e:
@@ -355,7 +355,7 @@ def list_rule_files():
     """列出全部规则文件。"""
     try:
         rule_dir = get_rule_directory()
-        current_rule_path = os.path.abspath(os.path.join(rule_dir, 'current_rule.json'))
+        default_name = default_rule(rule_dir)
         files = []
         for filename in sorted(os.listdir(rule_dir), key=lambda name: name.lower()):
             if not filename.lower().endswith('.json'):
@@ -378,7 +378,7 @@ def list_rule_files():
                 'size': stat.st_size,
                 'modified_time': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                 'rule_count': rule_count,
-                'is_current': os.path.abspath(file_path) == current_rule_path
+                'is_current': filename == default_name
             })
 
         return jsonify({'success': True, 'files': files, 'total': len(files)})
@@ -434,12 +434,13 @@ def delete_rule_file(filename):
     """删除指定规则文件。"""
     try:
         safe_name, file_path = resolve_rule_file(filename)
-        if safe_name == 'current_rule.json':
-            return jsonify({'success': False, 'message': 'current_rule.json 是当前启用规则，不允许删除'}), 400
         if not os.path.exists(file_path):
             return jsonify({'success': False, 'message': f'规则文件不存在：{safe_name}'}), 404
 
+        was_default = default_rule(get_rule_directory()) == safe_name
         os.remove(file_path)
+        if was_default:
+            set_default_rule(get_rule_directory(), '')
         return jsonify({
             'success': True,
             'message': '规则文件已删除',
@@ -459,14 +460,15 @@ def rename_rule_file(filename):
         data = request.get_json() or {}
         new_name, new_path = resolve_rule_file(data.get('new_filename'))
 
-        if old_name == 'current_rule.json':
-            return jsonify({'success': False, 'message': 'current_rule.json 是当前启用规则，不允许重命名'}), 400
         if os.path.exists(new_path):
             return jsonify({'success': False, 'message': '目标文件名已存在'}), 409
         if not os.path.exists(old_path):
             return jsonify({'success': False, 'message': f'规则文件不存在：{old_name}'}), 404
 
+        was_default = default_rule(get_rule_directory()) == old_name
         os.rename(old_path, new_path)
+        if was_default:
+            set_default_rule(get_rule_directory(), new_name)
         return jsonify({
             'success': True,
             'message': '规则文件已重命名',
@@ -480,19 +482,17 @@ def rename_rule_file(filename):
 
 @app.route('/api/rules/<path:filename>/activate', methods=['POST'])
 def activate_rule_file(filename):
-    """将指定规则文件设为当前启用规则。"""
+    """将指定规则文件设为默认练习规则。"""
     try:
         safe_name, rules = read_rule_file(filename)
         rules = validate_rule_payload(rules)
-        _, current_rule_path = resolve_rule_file('current_rule.json')
-
-        with open(current_rule_path, 'w', encoding='utf-8') as f:
-            f.write(format_rules_json(rules))
+        set_default_rule(get_rule_directory(), safe_name)
 
         return jsonify({
             'success': True,
-            'message': f'已将 {safe_name} 设为当前规则',
-            'active_rule_path': current_rule_path,
+            'message': f'已将 {safe_name} 设为默认练习规则',
+            'filename': safe_name,
+            'active_rule_path': os.path.join(get_rule_directory(), safe_name),
             'rules_count': len(rules)
         })
     except FileNotFoundError as e:

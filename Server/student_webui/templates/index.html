@@ -139,11 +139,11 @@
             grid-template-rows: clamp(20rem, 55vh, 30rem) clamp(15rem, 38vh, 22rem);
         }
 
-        .practice-layout .card-custom {
+        .student-workspace .card-custom {
             overflow: hidden;
         }
 
-        .practice-layout .card-header h5 {
+        .student-workspace .card-custom > .card-header > :is(h5, .h5) {
             display: flex;
             align-items: center;
         }
@@ -161,7 +161,7 @@
         }
 
         .practice-layout .card-custom:hover,
-        .practice-student-card:hover {
+        .student-info-panel:hover {
             transform: none;
         }
 
@@ -440,14 +440,6 @@
         .form-control:focus {
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-        }
-
-        .student-info-card {
-            background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(59, 130, 246, 0.1));
-            border-radius: 16px;
-            padding: 20px;
-            border: 1px solid rgba(79, 70, 229, 0.2);
-            margin-bottom: 20px;
         }
 
         .question-content {
@@ -766,57 +758,75 @@
                     </div>
                     <div class="col-md-4 text-end">
                         <div class="d-flex align-items-center justify-content-end flex-wrap">
-                            <button v-if="!selectedExam" type="button" class="btn btn-sm btn-outline-light me-3"
+                            <button type="button" class="btn btn-sm btn-outline-light me-3"
                                     :disabled="loading" @click="returnToEntry">
                                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回选择页
                             </button>
                             <span class="status-indicator" :class="connectionStatus"></span>
                             <span class="text-white fw-semibold">{{ connectionText }}</span>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 学生信息 -->
-            <div v-if="selectedExam" class="student-info-card" data-entry="up">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="text-primary mb-2">
-                            <i class="bi bi-person-circle me-2"></i>
-                            学号：{{ studentInfo.student_id || '未登录' }}
-                        </h5>
-                    </div>
-                    <div class="col-md-6">
-                        <h5 class="text-primary mb-2">
-                            <i class="bi bi-person me-2"></i>
-                            姓名：{{ studentInfo.student_name || '未登录' }}
-                        </h5>
+                        <small v-if="selectedExam && !examEnded && submittedScore === null && (detectionRunning || submitOnReturn)"
+                               class="d-block mt-1 text-white" role="status">返回选择页将自动交卷</small>
+                        <small v-if="exitToken && !exitPending" class="d-block text-white">
+                            关闭或刷新页面将自动交卷。选择「留在页面」可继续考试。
+                        </small>
                     </div>
                 </div>
             </div>
 
             <!-- 主要内容 -->
-            <div class="p-4">
-                <section v-if="!selectedExam" class="card card-custom practice-student-card overflow-hidden mb-4"
-                         data-entry="up" aria-labelledby="practice-student-title">
+            <div class="p-4 student-workspace">
+                <section class="card card-custom student-info-panel mb-4"
+                         data-entry="up" aria-labelledby="student-info-title">
                     <div class="card-header bg-primary text-white">
-                        <h2 id="practice-student-title" class="h5 mb-0">
+                        <h2 id="student-info-title" class="h5 mb-0">
                             <i class="bi bi-person-badge me-2" aria-hidden="true"></i>学生信息
                         </h2>
                     </div>
                     <div class="card-body">
                         <dl class="row gy-3 mb-0">
-                            <div class="col-md-4">
+                            <div class="col-md">
                                 <dt class="small text-secondary">学号</dt>
                                 <dd class="fw-semibold text-break mb-0">{{ studentInfo.student_id }}</dd>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md">
                                 <dt class="small text-secondary">姓名</dt>
                                 <dd class="fw-semibold text-break mb-0">{{ studentInfo.student_name }}</dd>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md">
                                 <dt class="small text-secondary">班级</dt>
                                 <dd class="fw-semibold text-break mb-0">{{ studentInfo.class_label }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </section>
+                <section v-if="selectedExam" class="card card-custom mb-4"
+                         data-entry="up" aria-labelledby="exam-info-title">
+                    <div class="card-header bg-primary text-white">
+                        <h2 id="exam-info-title" class="h5 mb-0">
+                            <i class="bi bi-card-list me-2" aria-hidden="true"></i>考试信息
+                        </h2>
+                    </div>
+                    <div class="card-body">
+                        <dl class="row gy-3 mb-0">
+                            <div class="col-md-4">
+                                <dt class="small text-secondary">考试名称</dt>
+                                <dd class="fw-semibold text-break mb-0">{{ selectedExam.name }}</dd>
+                            </div>
+                            <div class="col-md-5">
+                                <dt class="small text-secondary">考试时间</dt>
+                                <dd class="mb-0">
+                                    <span v-if="selectedExam.deadline === '9999-12-31 23:59:59'">自 {{ selectedExam.start }} 起长期开放</span>
+                                    <span v-else>{{ selectedExam.start }} 至 {{ selectedExam.deadline }}</span>
+                                </dd>
+                            </div>
+                            <div class="col-md-3">
+                                <dt class="small text-secondary">考试规则名</dt>
+                                <dd class="text-break mb-0">{{ (selectedExam.rule_filename || '').replace(/\.json$/i, '') || '尚未指定' }}</dd>
+                            </div>
+                            <div class="col-12">
+                                <dt class="small text-secondary">考试要求</dt>
+                                <dd class="mb-0" style="white-space: pre-wrap; overflow-wrap: anywhere">{{ selectedExam.content || '未填写' }}</dd>
                             </div>
                         </dl>
                     </div>
@@ -832,11 +842,6 @@
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <section v-if="selectedExam" class="mb-4 p-3 bg-light rounded">
-                                    <h5 v-if="selectedExam.content" class="text-primary">考试内容</h5>
-                                    <p v-if="selectedExam.content" style="white-space:pre-wrap;overflow-wrap:anywhere" v-text="selectedExam.content"></p>
-                                    <small class="text-secondary">本场规则 · {{ selectedExam.rule_filename || '尚未指定' }}</small>
-                                </section>
                                 <div v-if="!selectedExam" class="rule-select-panel">
                                     <div class="rule-select-label">
                                         <span><i class="bi bi-file-earmark-check me-2"></i>考核规则</span>
@@ -850,11 +855,11 @@
                                             </option>
                                         </select>
                                         <button class="btn btn-primary" @click="confirmRuleSelection" :disabled="ruleLoading || !selectedRuleFile">
-                                            <i class="bi bi-check2-circle me-1"></i>应用
+                                            <i class="bi bi-check2-circle me-1"></i>设为当前
                                         </button>
                                     </div>
                                     <div class="rule-current-note">
-                                        当前：{{ currentRuleFile || '未加载' }}
+                                        本机当前：{{ currentRuleFile || '尚未确认' }}
                                     </div>
                                 </div>
 
@@ -874,7 +879,7 @@
                                 <div class="d-grid gap-3" :class="{ 'exam-actions': selectedExam }">
                                     <button
                                         @click="startDetection"
-                                        :disabled="detectionRunning || loading || examEnded || submittedScore !== null"
+                                        :disabled="detectionRunning || exitPending || loading || examEnded || submitOnReturn || submittedScore !== null"
                                         class="btn btn-custom btn-start">
                                         <i class="bi bi-play-circle me-2"></i>
                                         {{ detectionRunning ? '检测运行中...' : '开始接线操作' }}
@@ -890,7 +895,7 @@
                                     </button>
 
                                     <button v-if="selectedExam" type="button" class="btn btn-custom btn-primary"
-                                            @click="submitExam" :disabled="loading || !examRecordingId || examEnded || submittedScore !== null">
+                                            @click="submitExam()" :disabled="exitPending || loading || !examRecordingId || examEnded || submittedScore !== null">
                                         <i class="bi bi-check2-square me-2"></i>检查并提交成绩
                                     </button>
                                     <button v-else type="button" class="btn btn-custom btn-info"
@@ -1022,7 +1027,7 @@
                                     <div class="mb-2">
                                         <strong>知识点：</strong>{{ autoGeneratedQuestion.knowledge }}
                                     </div>
-                                    <div class="question-text" v-html="formatQuestion(autoGeneratedQuestion.question)">
+                                    <div class="question-text" style="white-space: pre-wrap" v-text="autoGeneratedQuestion.question">
                                     </div>
                                 </div>
                                 <div v-else class="text-muted">
@@ -1061,6 +1066,9 @@
                             </div>
                         </div>
 
+                        <label for="chat-image" class="form-label small">附图（视觉模型可选，最多 5 MB）</label>
+                        <input id="chat-image" ref="chatImage" class="form-control form-control-sm mb-2" type="file"
+                               accept="image/png,image/jpeg,image/webp" @change="selectChatImage" :disabled="aiLoading">
                         <!-- 输入框 -->
                         <div class="input-group">
                             <input
@@ -1073,7 +1081,7 @@
                             <button
                                 class="btn btn-primary"
                                 @click="sendQuestion"
-                                :disabled="!questionInput.trim() || aiLoading">
+                                :disabled="(!questionInput.trim() && !imageFile) || aiLoading">
                                 <span v-if="aiLoading" class="loading-spinner"></span>
                                 <i v-else class="bi bi-send"></i>
                                 发送
@@ -1129,7 +1137,7 @@
                                                 <strong>选择知识点：</strong>{{ generatedQuestion.knowledge }}
                                             </div>
                                             <div class="question-content">
-                                                <div v-html="formatQuestion(generatedQuestion.question)"></div>
+                                                <div style="white-space: pre-wrap" v-text="generatedQuestion.question"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -1149,21 +1157,27 @@
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
                     </div>
                     <div class="modal-body">
-                        <p class="text-muted small">AI 对话和知识点出题共用此服务地址，可分别选择模型。</p>
+                        <p class="text-muted small">设置按当前学号保存，下次登录时自动沿用。</p>
                         <div class="row g-2 mb-3">
-                            <div class="col-8">
-                                <label class="form-label" for="model-host">模型服务地址</label>
-                                <input id="model-host" class="form-control" placeholder="IP 或主机名" required
-                                       v-model.trim="modelDraft.ip" @input="resetModelList" :disabled="modelDraft.busy">
+                            <div class="col-sm-8">
+                                <label class="form-label" for="model-ip">vLLM 服务 IP</label>
+                                <input id="model-ip" class="form-control" required placeholder="例如 192.168.1.100"
+                                       v-model.trim="modelDraft.ip" @input="modelEndpointChanged" :disabled="modelDraft.busy">
                             </div>
-                            <div class="col-4">
+                            <div class="col-sm-4">
                                 <label class="form-label" for="model-port">端口号</label>
-                                <input id="model-port" class="form-control" type="number" min="1" max="65535" required
-                                       v-model="modelDraft.port" @input="resetModelList" :disabled="modelDraft.busy">
+                                <input id="model-port" type="number" class="form-control" min="1" max="65535" step="1" required
+                                       placeholder="8000" v-model="modelDraft.port" @input="modelEndpointChanged" :disabled="modelDraft.busy">
                             </div>
                         </div>
+                        <div v-if="modelDraft.requiresKey" class="mb-3">
+                            <label for="model-key" class="form-label">API Key</label>
+                            <input id="model-key" type="password" class="form-control" autocomplete="off"
+                                   :placeholder="modelDraft.hasSavedKey ? '已保存，留空沿用' : '请输入模型服务的密钥'"
+                                   v-model.trim="modelDraft.api_key" :disabled="modelDraft.busy" @input="resetModelList">
+                        </div>
                         <button type="submit" class="btn btn-outline-primary" :disabled="modelDraft.busy">
-                            {{ modelDraft.busy ? '正在测试并获取模型…' : '测试连接并获取模型' }}
+                            测试连接并获取模型
                         </button>
                         <p role="status" class="small mt-2 mb-0" :class="modelDraft.failed ? 'text-danger' : 'text-secondary'">{{ modelDraft.message }}</p>
                         <div v-if="modelDraft.models.length" class="row g-2 mt-2">
@@ -1183,7 +1197,7 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
-                        <button type="button" class="btn btn-primary" @click="saveModelSettings" :disabled="!modelDraft.models.length">保存设置</button>
+                        <button type="button" class="btn btn-primary" @click="saveModelSettings" :disabled="modelDraft.busy || !modelDraft.models.length">保存设置</button>
                     </div>
                 </form>
             </div>
@@ -1196,7 +1210,7 @@
     <script>
         const { createApp } = Vue;
         const DEFAULT_LOCAL_CLIENT_BASE = {{ local_client_base|tojson }};
-        const OLLAMA_DEFAULTS = {{ frontend_ollama_defaults|tojson }};
+        const INITIAL_MODEL_SETTINGS = {{ practice_model_settings|tojson }};
         const INITIAL_STUDENT_INFO = {{ initial_student_info|tojson }};
         const LOCAL_CLIENT_BASE = localStorage.getItem('local_client_base') || DEFAULT_LOCAL_CLIENT_BASE;
 
@@ -1209,6 +1223,11 @@
                     selectedExam: {{ selected_exam|tojson }},
                     submittedScore: {{ submitted_score|tojson }},
                     examEnded: false,
+                    submitOnReturn: false,
+                    exitToken: '',
+                    exitPending: false,
+                    exitStream: null,
+                    startingExamSession: null,
                     examRecordingId: '',
                     
                     // 连接状态
@@ -1247,16 +1266,8 @@
                     selectedKnowledge: '',
                     questionLoading: false,
                     generatedQuestion: null,
-                    ollamaConfig: {
-                        ip: OLLAMA_DEFAULTS.host,
-                        port: OLLAMA_DEFAULTS.port,
-                        model: OLLAMA_DEFAULTS.model
-                    },
-                    aiOllamaConfig: {
-                        ip: OLLAMA_DEFAULTS.host,
-                        port: OLLAMA_DEFAULTS.port,
-                        model: OLLAMA_DEFAULTS.model
-                    },
+                    modelSettings: INITIAL_MODEL_SETTINGS,
+                    imageFile: null,
                     modelDraft: null,
 
                     // 新增：空气开关状态和错误接线次数
@@ -1310,12 +1321,6 @@
 
                 this.loadRuleFiles();
                 
-                for (const [config, prefix] of [[this.ollamaConfig, 'ollama_'], [this.aiOllamaConfig, 'ai_ollama_']]) {
-                    for (const key of ['ip', 'port', 'model']) {
-                        config[key] = localStorage.getItem(prefix + key) || config[key];
-                    }
-                }
-
                 // 加载知识点列表，用于自动生成题目
                 this.loadKnowledgeList();
             },
@@ -1323,6 +1328,7 @@
 
             // 组件销毁前清理资源
             beforeUnmount() {
+                this.clearExitWatch();
                 this.clearPolling();
                 if (this.socket) {
                     this.socket.disconnect();
@@ -1335,11 +1341,99 @@
             },
             
             methods: {
+                exitUrl(action) {
+                    return LOCAL_CLIENT_BASE + '/api/exam/page/' + this.exitToken + '/' + action;
+                },
+
+                warnBeforeExit(event) {
+                    if (!this.exitToken || this.exitPending || this.examEnded) return;
+                    event.preventDefault();
+                    event.returnValue = '';
+                },
+
+                onExamPageHide() {
+                    if (!this.exitToken || this.exitPending) return;
+                    this.exitPending = true;
+                    const url = this.exitUrl('leave');
+                    if (!navigator.sendBeacon?.(url)) {
+                        fetch(url, { method: 'POST', keepalive: true }).catch(() => {});
+                    }
+                    this.exitStream?.close();
+                    this.rememberExamAttempt();
+                },
+
+                resumeExamPage(event) {
+                    if (event.persisted && this.exitToken) this.watchExamExit();
+                },
+
+                watchExamExit() {
+                    const token = this.exitToken;
+                    this.exitStream?.close();
+                    const stream = new EventSource(this.exitUrl('watch'));
+                    this.exitStream = Vue.markRaw(stream);
+                    stream.onerror = () => {
+                        if (token === this.exitToken && stream.readyState === EventSource.CLOSED &&
+                            this.exitPending && !this.examRecordingId) {
+                            this.clearExitWatch();
+                            this.statusMessage = '未确认接线已启动，请重新检查考试状态';
+                            sessionStorage.removeItem(this.examStorageKey);
+                        }
+                    };
+                    stream.onopen = () => {
+                        if (token === this.exitToken && this.exitPending) {
+                            fetch(this.exitUrl('leave'), { method: 'POST' }).catch(() => {});
+                        }
+                    };
+                    stream.addEventListener('submission', event => {
+                        if (token !== this.exitToken) return;
+                        const job = JSON.parse(event.data);
+                        if (!job) return;
+                        this.exitPending = true;
+                        this.detectionRunning = false;
+                        this.clearPolling();
+                        this.statusMessage = '正在自动交卷…';
+                        if (job.state === 'submitted') {
+                            this.showSubmittedScore(job.score);
+                        } else if (job.state === 'failed') {
+                            this.clearExitWatch();
+                            this.statusMessage = '自动交卷失败：' + job.detail;
+                            this.rememberExamAttempt();
+                        }
+                    });
+                },
+
+                installExitWatch(token) {
+                    this.exitToken = token;
+                    window.addEventListener('beforeunload', this.warnBeforeExit);
+                    window.addEventListener('pagehide', this.onExamPageHide);
+                    window.addEventListener('pageshow', this.resumeExamPage);
+                },
+
+                clearExitWatch() {
+                    this.exitStream?.close();
+                    this.exitStream = null;
+                    this.exitToken = '';
+                    this.exitPending = false;
+                    window.removeEventListener('beforeunload', this.warnBeforeExit);
+                    window.removeEventListener('pagehide', this.onExamPageHide);
+                    window.removeEventListener('pageshow', this.resumeExamPage);
+                },
+
+                async releaseExamExit() {
+                    if (!this.exitToken) return;
+                    const response = await fetch(this.exitUrl('release'), { method: 'POST' });
+                    if (!response.ok) throw new Error('本机仍在处理交卷，请稍后重试');
+                    this.clearExitWatch();
+                    this.rememberExamAttempt();
+                },
+
                 rememberExamAttempt() {
                     if (!this.selectedExam) return;
                     sessionStorage.setItem(this.examStorageKey, JSON.stringify({
-                        session: this.examSessionId, recording: this.examRecordingId,
-                        running: this.detectionRunning
+                        session: this.startingExamSession || this.examSessionId,
+                        recording: this.startingExamSession ? null : this.examRecordingId,
+                        running: this.detectionRunning, submitOnReturn: this.submitOnReturn,
+                        exitToken: this.exitToken, closing: this.exitPending
                     }));
                 },
 
@@ -1354,16 +1448,31 @@
                     } catch {
                         sessionStorage.removeItem(this.examStorageKey);
                     }
-                    if (!attempt?.recording || !attempt.session) return;
+                    if (!attempt?.session || (!attempt.recording && !attempt.exitToken)) return;
+                    if (attempt.exitToken) {
+                        this.installExitWatch(attempt.exitToken);
+                        this.exitPending = Boolean(attempt.closing);
+                        this.watchExamExit();
+                    }
                     this.examRecordingId = attempt.recording;
                     this.examSessionId = attempt.session;
-                    this.detectionRunning = attempt.running;
+                    this.detectionRunning = !this.exitPending && attempt.running;
+                    this.submitOnReturn = Boolean(attempt.submitOnReturn);
                     if (this.detectionRunning) this.setupPolling();
+                    if (this.exitPending) {
+                        this.statusMessage = '正在自动交卷…';
+                        return;
+                    }
                     this.statusMessage = this.detectionRunning ? '检测进行中' : '检测已停止，可检查并提交成绩';
                 },
 
                 showSubmittedScore(score) {
+                    if (this.exitToken && !this.exitPending) {
+                        fetch(this.exitUrl('release'), { method: 'POST', keepalive: true }).catch(() => {});
+                    }
+                    this.clearExitWatch();
                     this.submittedScore = score;
+                    this.submitOnReturn = false;
                     this.detectionRunning = false;
                     this.clearPolling();
                     this.statusMessage = '成绩已提交';
@@ -1382,10 +1491,18 @@
                         if (!data.success) {
                             throw new Error(data.message || '获取规则文件失败');
                         }
-                        this.ruleFiles = data.files || [];
+                        this.ruleFiles = (data.files || []).filter(file => file.rule_count > 0);
                         const current = this.ruleFiles.find(file => file.is_current);
-                        this.currentRuleFile = current ? current.filename : 'current_rule.json';
-                        this.selectedRuleFile = current ? current.filename : '';
+                        this.selectedRuleFile = current?.filename || '';
+                        const local = await fetch(LOCAL_CLIENT_BASE + '/api/rules/local', {
+                            cache: 'no-store', signal: AbortSignal.timeout(5000)
+                        });
+                        if (local.ok) {
+                            const selected = await local.json();
+                            this.currentRuleFile = selected.filename || '';
+                            if (this.ruleFiles.some(file => file.filename === selected.filename))
+                                this.selectedRuleFile = selected.filename;
+                        }
                     } catch (error) {
                         console.error('获取规则文件失败:', error);
                         this.statusMessage = error.message || '获取规则文件失败';
@@ -1400,7 +1517,7 @@
                         this.alertInPractice('请先选择规则文件');
                         return;
                     }
-                    if (!confirm(`确定使用 ${this.selectedRuleFile} 作为当前考核评判标准吗？这会覆盖 current_rule.json。`)) {
+                    if (!confirm(`将 ${this.selectedRuleFile} 设为本机当前练习规则？`)) {
                         return;
                     }
 
@@ -1420,40 +1537,22 @@
                             throw new Error(activateData.message || '选择规则文件失败');
                         }
 
-                        this.currentRuleFile = 'current_rule.json';
-                        this.statusMessage = activateData.message;
-
-                        try {
-                            const pullResponse = await fetch(`${LOCAL_CLIENT_BASE}/api/rules/pull`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    server_base: window.location.origin,
-                                    download_url: activateData.download_url,
-                                    download_url_absolute: activateData.download_url_absolute
-                                })
-                            });
-                            const pullData = await pullResponse.json();
-                            if (pullData.success) {
-                                this.statusMessage = '规则已应用并同步到本地';
-                                this.alertInPractice('规则已应用并同步到本地');
-                            } else {
-                                const message = pullData.message || '未知错误';
-                                this.statusMessage = `服务端规则已应用，但同步到本地失败：${message}`;
-                                this.alertInPractice(`服务端规则已应用，但同步到本地失败：${message}`);
-                            }
-                        } catch (pullError) {
-                            const message = this.localGatewayUnavailableMessage(pullError, '服务端规则已应用，但无法同步到本地');
-                            this.statusMessage = message;
-                            this.alertInPractice(message);
-                        }
-
-                        await this.loadRuleFiles();
+                        const response = await fetch(LOCAL_CLIENT_BASE + '/api/rules/pull', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            signal: AbortSignal.timeout(35000),
+                            body: JSON.stringify({filename: activateData.filename,
+                                server_base: window.location.origin, download_url: activateData.download_url})
+                        });
+                        const local = await response.json();
+                        if (!response.ok || !local.success) throw new Error(local.message || '本机下载失败');
+                        this.currentRuleFile = local.rule_filename;
+                        this.statusMessage = '本机当前练习规则：' + this.currentRuleFile;
+                        this.alertInPractice(this.statusMessage);
                     } catch (error) {
-                        console.error('选择规则文件失败:', error);
-                        this.alertInPractice(error.message || '选择规则文件失败');
+                        this.statusMessage = '设置本机规则失败：' + (error instanceof TypeError
+                            ? '请检查网络和本机网关后重试' : error.message);
+                        this.alertInPractice(this.statusMessage);
                     } finally {
                         this.ruleLoading = false;
                     }
@@ -1633,9 +1732,35 @@
                 },
 
                 async returnToEntry() {
-                    if (this.detectionRunning) {
+                    if (this.loading) return;
+                    if (this.selectedExam && !this.exitPending && !this.examEnded && this.submittedScore === null &&
+                        (this.detectionRunning || this.submitOnReturn)) {
+                        if (!this.examRecordingId) {
+                            window.alert('未找到本次接线记录，无法自动交卷。请留在考试页检查本机网关。');
+                            return;
+                        }
+                        this.submitOnReturn = true;
+                        this.rememberExamAttempt();
+                        await this.submitExam(true);
+                        if (this.submittedScore === null) {
+                            window.alert(this.statusMessage);
+                            return;
+                        }
+                        window.alert('成绩已提交，本次考试得分为 ' + this.submittedScore + ' 分。即将返回选择页。');
+                    } else if (this.detectionRunning) {
                         await this.stopDetection();
-                        if (this.detectionRunning) return;
+                        if (this.detectionRunning) {
+                            if (this.selectedExam) window.alert(this.statusMessage);
+                            return;
+                        }
+                    }
+                    if (this.exitToken && !this.exitPending) {
+                        try {
+                            await this.releaseExamExit();
+                        } catch (error) {
+                            window.alert(error.message);
+                            return;
+                        }
                     }
                     window.location.assign({{ (session.get('portal_root', '') ~ '/entry')|tojson }});
                 },
@@ -1678,6 +1803,12 @@
                             ? crypto.randomUUID()
                             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
                         const startPath = this.selectedExam ? "/api/exam/start" : "/api/yolo/start";
+                        if (this.selectedExam) {
+                            await this.releaseExamExit();
+                            this.startingExamSession = newSessionId;
+                            const bytes = crypto.getRandomValues(new Uint8Array(16));
+                            this.installExitWatch(Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''));
+                        }
                         const response = await fetch(`${LOCAL_CLIENT_BASE}${startPath}`, {
                             method: 'POST',
                             headers: {
@@ -1689,21 +1820,24 @@
                                 session_id: newSessionId,
                                 test_id: this.selectedExam ? this.selectedExam.id : '',
                                 test_name: this.selectedExam ? this.selectedExam.name : '',
-                                ...(this.selectedExam ? { rule_ticket: ruleTicket }
+                                ...(this.selectedExam ? { rule_ticket: ruleTicket, exit_token: this.exitToken }
                                     : { rule_file: this.currentRuleFile || 'current_rule.json' })
                             })
                         });
 
                         if (ruleTicket && response.status === 404) {
+                            this.clearExitWatch();
                             this.statusMessage = "请更新本机网关，以使用教师指定的考试规则";
                             return;
                         }
                         const data = await response.json();
                         if (data.success) {
+                            this.startingExamSession = null;
                             this.examSessionId = newSessionId;
                             this.detectionRunning = true;
                             if (this.selectedExam) {
                                 this.examRecordingId = data.recording_id;
+                                this.watchExamExit();
                                 this.rememberExamAttempt();
                             }
                             this.statusMessage = data.message;
@@ -1711,6 +1845,7 @@
                             if (!this.selectedExam) this.getAirSwitchStatus();
                             this.getWiringStatus();
                         } else {
+                            this.clearExitWatch();
                             this.detectionRunning = !this.selectedExam && Boolean(data.running);
                             this.statusMessage = data.message || '启动检测失败';
                             if (!this.detectionRunning) {
@@ -1719,6 +1854,7 @@
                             this.alertInPractice(data.message);
                         }
                     } catch (error) {
+                        if (!this.examRecordingId || !this.exitStream) this.clearExitWatch();
                         console.error('启动检测失败:', error);
                         this.detectionRunning = false;
                         this.clearPolling();
@@ -1726,6 +1862,7 @@
                         this.statusMessage = message;
                         this.alertInPractice(message);
                     } finally {
+                        this.startingExamSession = null;
                         this.loading = false;
                     }
                 },
@@ -1779,10 +1916,11 @@
                     }
                 },
 
-                async submitExam() {
+                async submitExam(onReturn = false) {
                     if (this.examEnded || this.loading || !this.examRecordingId || this.submittedScore !== null) return;
-                    if (!window.confirm('提交后不可更改成绩，是否确认？')) return;
+                    if (!onReturn && !window.confirm('提交后不可更改成绩，是否确认？')) return;
                     this.loading = true;
+                    if (onReturn) this.statusMessage = '正在自动交卷，请稍候…';
                     try {
                         const availability = await fetch('api/exam/result' + window.location.search, { cache: 'no-store' });
                         if (availability.status === 410) {
@@ -1794,6 +1932,7 @@
                         const current = await availability.json();
                         if (!availability.ok) throw new Error(current.message);
                         if (current.score !== null) {
+                            if (this.detectionRunning) await this.finishDetection();
                             this.showSubmittedScore(current.score);
                             return;
                         }
@@ -1830,9 +1969,25 @@
                     modal.show();
                 },
 
+                selectChatImage(event) {
+                    const file = event.target.files[0];
+                    if (file && (file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))) {
+                        event.target.value = '';
+                        this.imageFile = null;
+                        this.alertInPractice('请选择 5 MB 以内的 PNG、JPEG 或 WebP 图片。');
+                        return;
+                    }
+                    this.imageFile = file || null;
+                },
+
                 // 发送问题
                 async sendQuestion() {
-                    if (!this.questionInput.trim() || this.aiLoading) return;
+                    if ((!this.questionInput.trim() && !this.imageFile) || this.aiLoading) return;
+                    if (!this.modelSettings.chat) {
+                        this.alertInPractice('请先在「大模型信息设置」中选择对话模型。');
+                        return;
+                    }
+                    const file = this.imageFile;
 
                     const question = this.questionInput.trim();
                     this.questionInput = '';
@@ -1841,29 +1996,35 @@
                     this.chatMessages.push({
                         id: Date.now(),
                         type: 'user',
-                        content: question,
+                        content: [question, file && file.name].filter(Boolean).join(' · '),
                         timestamp: new Date().toLocaleTimeString()
                     });
 
                     this.aiLoading = true;
 
                     try {
+                        let image;
+                        if (file) {
+                            image = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result);
+                                reader.onerror = () => reject(reader.error);
+                                reader.readAsDataURL(file);
+                            });
+                        }
                         const response = await fetch('api/ai_chat', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify({
-                                question,
-                                ip: this.aiOllamaConfig.ip,
-                                port: parseInt(this.aiOllamaConfig.port),
-                                model_name: this.aiOllamaConfig.model
-                            })
+                            body: JSON.stringify({ question, image })
                         });
 
                         const data = await response.json();
 
                         if (data.success) {
+                            this.imageFile = null;
+                            this.$refs.chatImage.value = '';
                             // 添加AI回复
                             this.chatMessages.push({
                                 id: Date.now() + 1,
@@ -1903,22 +2064,19 @@
 
                 // 生成题目
                 async generateQuestion() {
-                    if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
+                    if (!this.modelSettings.question) {
                         this.alertInPractice('请先在「大模型信息设置」中选择出题模型。');
                         return;
                     }
 
                     this.questionLoading = true;
                     try {
-                        const response = await fetch('api/generate_question_by_ollama', {
+                        const response = await fetch('api/models/question', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                ip: this.ollamaConfig.ip,
-                                port: parseInt(this.ollamaConfig.port),
-                                model_name: this.ollamaConfig.model,
                                 subject: this.selectedSubject,
                                 knowledge: this.selectedKnowledge
                             })
@@ -1941,8 +2099,8 @@
 
                 // 自动生成题目（当wired_status变化时调用）
                 async autoGenerateQuestion() {
-                    // 只有当Ollama配置完整且有可用知识点时才执行
-                    if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model || 
+                    // 使用学生保存的出题模型
+                    if (!this.modelSettings.question ||
                         !this.availableKnowledge || this.availableKnowledge.length === 0) {
                         return;
                     }
@@ -1953,15 +2111,12 @@
                     
                     this.autoQuestionLoading = true;
                     try {
-                        const response = await fetch('api/generate_question_by_ollama', {
+                        const response = await fetch('api/models/question', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                ip: this.ollamaConfig.ip,
-                                port: parseInt(this.ollamaConfig.port),
-                                model_name: this.ollamaConfig.model,
                                 subject: this.selectedSubject,
                                 knowledge: randomKnowledge
                             })
@@ -1981,6 +2136,13 @@
                     }
                 },
 
+                modelEndpointChanged() {
+                    this.modelDraft.api_key = '';
+                    this.modelDraft.hasSavedKey = false;
+                    this.modelDraft.requiresKey = false;
+                    this.resetModelList();
+                },
+
                 resetModelList() {
                     this.modelDraft.models = [];
                     this.modelDraft.message = '';
@@ -1991,16 +2153,17 @@
                     const draft = this.modelDraft;
                     if (draft.busy) return;
                     this.resetModelList();
+                    draft.message = '正在测试连接并获取模型…';
                     draft.busy = true;
                     try {
-                        const response = await fetch('api/test_ollama_connection', {
+                        const response = await fetch('api/models/discover', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ ip: draft.ip, port: draft.port })
+                            body: JSON.stringify({ ip: draft.ip, port: draft.port, api_key: draft.api_key })
                         });
                         const result = await response.json();
+                        if (result.requires_key) draft.requiresKey = true;
                         if (!response.ok || !result.success) throw new Error(result.message || '获取模型失败，请重试。');
-                        draft.ip = result.host;
                         draft.models = result.models;
                         for (const key of ['chat', 'question']) {
                             if (!draft.models.includes(draft[key])) draft[key] = draft.models[0] || '';
@@ -2014,24 +2177,29 @@
                     }
                 },
 
-                saveModelSettings() {
+                async saveModelSettings() {
                     const draft = this.modelDraft;
-                    if (!draft.models.includes(draft.chat) || !draft.models.includes(draft.question)) return;
-                    for (const [config, prefix, model] of [
-                        [this.aiOllamaConfig, 'ai_ollama_', draft.chat],
-                        [this.ollamaConfig, 'ollama_', draft.question]
-                    ]) {
-                        Object.assign(config, { ip: draft.ip, port: String(draft.port), model });
-                        for (const key of ['ip', 'port', 'model']) localStorage.setItem(prefix + key, config[key]);
+                    if (draft.busy || !draft.models.includes(draft.chat) || !draft.models.includes(draft.question)) return;
+                    draft.busy = true;
+                    draft.failed = false;
+                    draft.message = '正在保存…';
+                    try {
+                        const {ip, port, chat, question, api_key} = draft;
+                        const response = await fetch('api/models/settings', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ ip, port, chat, question, api_key })
+                        });
+                        const result = await response.json();
+                        if (result.requires_key) draft.requiresKey = true;
+                        if (!response.ok || !result.success) throw new Error(result.message || '设置保存失败。');
+                        this.modelSettings = result.settings;
+                        bootstrap.Modal.getInstance(document.getElementById('aiModelSettingModal')).hide();
+                    } catch (error) {
+                        draft.failed = true;
+                        draft.message = error.message;
+                    } finally {
+                        draft.busy = false;
                     }
-                    bootstrap.Modal.getInstance(document.getElementById('aiModelSettingModal')).hide();
-                },
-
-                // 格式化题目内容
-                formatQuestion(question) {
-                    if (!question) return '';
-                    // 将换行符转换为HTML换行标签
-                    return question.replace(/\n/g, '<br>');
                 },
 
                 // 打开题目生成模态框
@@ -2196,11 +2364,26 @@
                 },
 
                 openAiModelSettingModal() {
-                    const endpoint = localStorage.getItem('ollama_ip') ? this.ollamaConfig : this.aiOllamaConfig;
+                    const config = this.modelSettings;
                     this.modelDraft = {
-                        ip: endpoint.ip, port: endpoint.port, chat: this.aiOllamaConfig.model,
-                        question: this.ollamaConfig.model, models: [], busy: false, failed: false, message: ''
+                        ip: config.ip, port: config.port, api_key: '',
+                        requiresKey: config.has_key, hasSavedKey: config.has_key,
+                        chat: config.chat, question: config.question,
+                        models: config.saved ? [...new Set([config.chat, config.question])] : [],
+                        busy: false, failed: false, message: ''
                     };
+                    if (!config.saved) {
+                        // Prefill the former browser settings for the first switch to the compatible API.
+                        const prefix = localStorage.getItem('ollama_ip') ? 'ollama_' : 'ai_ollama_';
+                        const host = localStorage.getItem(prefix + 'ip');
+                        const port = localStorage.getItem(prefix + 'port');
+                        if (host && port) {
+                            this.modelDraft.ip = host === 'localhost' ? '127.0.0.1' : host.replace(/^\[|\]$/g, '');
+                            this.modelDraft.port = port;
+                        }
+                        this.modelDraft.chat = localStorage.getItem('ai_ollama_model') || config.chat;
+                        this.modelDraft.question = localStorage.getItem('ollama_model') || config.question;
+                    }
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('aiModelSettingModal')).show();
                 }
             }

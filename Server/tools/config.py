@@ -87,22 +87,10 @@ RULE_SERVER_CONFIG = {
     "port": _env_int("RULE_SERVER_PORT", 8000),
 }
 
-OLLAMA_CHAT_DEFAULTS = {
-    "host": _env("OLLAMA_CHAT_HOST", "192.168.1.130"),
-    "port": _env_int("OLLAMA_CHAT_PORT", 11434),
-    "model": _env("OLLAMA_CHAT_MODEL", "qwen2.5:1.5b"),
-}
-
-OLLAMA_QUESTION_DEFAULTS = {
-    "host": _env("OLLAMA_QUESTION_HOST", "127.0.0.1"),
-    "port": _env_int("OLLAMA_QUESTION_PORT", 11434),
-    "model": _env("OLLAMA_QUESTION_MODEL", "qwen2.5:1.5b"),
-}
-
-FRONTEND_OLLAMA_DEFAULTS = {
-    "host": _env("FRONTEND_OLLAMA_HOST", "localhost"),
-    "port": str(_env_int("FRONTEND_OLLAMA_PORT", 11434)),
-    "model": _env("FRONTEND_OLLAMA_MODEL", "qwen2.5:1.5b"),
+PRACTICE_MODEL_DEFAULTS = {
+    "base_url": _env("MODEL_API_BASE_URL", "http://127.0.0.1:8000/v1").rstrip("/"),
+    "chat": _env("MODEL_CHAT_NAME", ""),
+    "question": _env("MODEL_QUESTION_NAME", ""),
 }
 
 

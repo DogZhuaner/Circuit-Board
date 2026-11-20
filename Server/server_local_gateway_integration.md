@@ -76,9 +76,9 @@ GET /api/auth/user-info?user_no=...
 | POST | `/student/api/stop_detection` | 无 | 代理本地网关 `/api/yolo/stop` |
 | GET | `/student/api/get_detection_status` | 无 | 代理本地网关 `/api/yolo/status` |
 | GET | `/student/api/rules` | 无 | `success`, `files:[{filename,rule_count,size,modified_time,is_current}]`, `total` |
-| POST | `/student/api/rules/activate` | JSON: `filename` | `success`, `message`, `filename`, `rules_count` |
-| GET | `/student/api/rules/current` | 无 | `success`, `filename`, `rules`, `raw`, `rules_count`, `active_filename`, `active_rule_path`, `download_url`, `download_url_absolute` |
-| GET | `/student/api/rules/current/download` | 无 | 直接下载当前启用规则文件，文件名 `current_rule.json` |
+| POST | `/student/api/rules/activate` | JSON: `filename` | `success`, `filename`, `download_url` |
+| GET | `/student/api/rules/files/<filename>/download` | 文件名 | 所选练习规则 JSON |
+| GET | `/student/api/rules/current/download` | 无 | 下载教师指定的默认练习规则 |
 | GET | `/student/api/get_air_switch_status` | 无 | `airSwitchClosed`, `errorWiringCount` |
 | GET | `/student/api/get_score_and_contact` | 无 | `score`, `contact_A`, `contact_B`, `wired_status` |
 | GET | `/student/api/get_wiring_status` | 无 | `success`, `airSwitchClosed`, `errorWiringCount`, `currentContacts`, `wiringResults`, `totalScore` |
@@ -90,7 +90,7 @@ GET /api/auth/user-info?user_no=...
 | GET | `/student/api/test_wired_status` | Query: `status`, `contact_a`, `contact_b`, `score` | 测试用：`score`, `contact_A`, `contact_B`, `wired_status` |
 | POST | `/student/api/test_score_update` | 无 | 目前调用未定义 `match_subgraphs()`，不可用 |
 
-学生端还有 AI/Ollama 与可视化接口：
+学生端还有 OpenAI 兼容模型 与可视化接口：
 
 ```text
 /student/api/ai_chat
@@ -98,8 +98,9 @@ GET /api/auth/user-info?user_no=...
 /student/api/get_topics
 /student/api/generate_question
 /student/api/generate_multiple_questions
-/student/api/generate_question_by_ollama
-/student/api/test_ollama_connection
+/student/api/models/question
+/student/api/models/discover
+/student/api/models/settings
 /student/api/get_score_summary
 /student/api/get_score_distribution_plot
 /student/api/get_knowledge_analysis_plot
@@ -140,7 +141,7 @@ GET /api/auth/user-info?user_no=...
 | Method | Path | 请求参数 | 响应字段 |
 |---|---|---|---|
 | GET | `/teacher/api/rule_download_service` | 无 | `title`, `content:{file_path,server_ip,server_port,file_exists,file_size,status}`, `status` |
-| POST | `/teacher/api/rules/save` | JSON: `filename`, `rules:[{nodes:[...],score}]` | `success`, `message`, `filename`, `path`, `active_rule_path`, `rules_count` |
+| POST | `/teacher/api/rules/save` | JSON: `filename`, `rules:[{nodes:[...],score}]` | `success`, `message`, `filename`, `path`, `rules_count` |
 | GET | `/teacher/api/rules` | 无 | `success`, `files:[{filename,size,modified_time,rule_count,is_current}]`, `total` |
 | GET | `/teacher/api/rules/<filename>` | path filename | `success`, `filename`, `rules`, `raw` |
 | PUT | `/teacher/api/rules/<filename>` | JSON: `rules:[{nodes,score}]` | `success`, `message`, `filename`, `rules_count` |
@@ -155,58 +156,13 @@ GET /api/auth/user-info?user_no=...
 | Method | Path | 请求参数 | 响应字段 |
 |---|---|---|---|
 | GET | `/student/api/rules` | 无 | `success`, `files:[{filename,rule_count,size,modified_time,is_current}]`, `total` |
-| POST | `/student/api/rules/activate` | JSON: `filename` | `success`, `message`, `filename`, `rules_count` |
-| GET | `/student/api/rules/current` | 无 | `success`, `filename`, `rules`, `raw`, `rules_count`, `active_filename`, `active_rule_path`, `download_url`, `download_url_absolute` |
-| GET | `/student/api/rules/current/download` | 无 | 直接下载当前启用规则文件，文件名 `current_rule.json` |
+| POST | `/student/api/rules/activate` | JSON: `filename` | `success`, `filename`, `download_url` |
+| GET | `/student/api/rules/files/<filename>/download` | 文件名 | 所选练习规则 JSON |
+| GET | `/student/api/rules/current/download` | 无 | 下载教师指定的默认练习规则 |
 
-规则文件目录：
+服务端的 `data/rules/` 保存命名规则文件。教师设置默认练习规则时，`.practice-default` 保存文件名。学生点击「设为当前」时，页面把所选文件的下载地址交给本机 `POST /api/rules/pull`。下载成功后，网关将规则保存到本机 `data/rules/current_rule.json`。
 
-```text
-data/rules/
-```
-
-当前规则文件：
-
-```text
-data/rules/current_rule.json
-```
-
-学生端点击“考核规则 / 应用”时调用：
-
-```text
-POST /student/api/rules/activate
-```
-
-请求示例：
-
-```json
-{
-  "filename": "长动.json"
-}
-```
-
-该接口会读取所选规则文件，校验后覆盖：
-
-```text
-data/rules/current_rule.json
-```
-
-响应示例：
-
-```json
-{
-  "success": true,
-  "message": "已选择 长动.json 作为当前评判规则",
-  "filename": "长动.json",
-  "rules_count": 12,
-  "active_filename": "current_rule.json",
-  "active_rule_path": "/home/server/Server/data/rules/current_rule.json",
-  "download_url": "/student/api/rules/current/download",
-  "download_url_absolute": "http://服务器IP:7001/student/api/rules/current/download"
-}
-```
-
-本地网关应在收到页面通知后，使用 `download_url_absolute` 或 `server_base + download_url` 拉取当前规则，并保存到本地固定路径，供查分逻辑读取。
+选考时，页面调用 `POST /api/exams/<id>/prepare` 获取本场考试的签名规则快照，再调用学生机的 `POST /api/exam/prepare`。网关写入同一份本地规则并返回签名回执。服务端在 `POST /api/exams/<id>/enter` 校验回执和参考资格后才允许进入考试。开始检测时，网关再次核对本机规则和考试、学号。
 
 ## 6. Socket.IO
 
@@ -448,17 +404,4 @@ LOCAL_CLIENT_BASE
 
 混用。`LOCAL_CLIENT_BASE` 应只用于学生端本地接线检测网关。
 
-7. 如果本地网关需要读取当前规则，应支持从服务端下载：
-
-```text
-GET /student/api/rules
-POST /student/api/rules/activate
-GET /student/api/rules/current
-GET /student/api/rules/current/download
-```
-
-当前已经有明确下载接口：
-
-```text
-GET /student/api/rules/current/download
-```
+7. 学生机使用服务端返回的命名文件地址下载练习规则。考试入口使用本场考试的签名快照和本机下载回执。

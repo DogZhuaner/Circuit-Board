@@ -1,5 +1,6 @@
 import json
 import multiprocessing
+import secrets
 from collections import Counter
 from pathlib import Path
 from datetime import datetime
@@ -14,10 +15,11 @@ from werkzeug.serving import run_simple
 
 from recording_archive import archive_path
 from db import MySQLConnector
-from exam_access import ExamEntryError, exam_ticket, open_exams, require_open_exam
+from exam_access import ExamEntryError, exam_ticket, exam_rule_ticket, check_install_receipt, open_exams, require_open_exam
 from teacher_webui.app import app as teacher_app
 from student_webui.app import app as student_app
 from tools.config import (
+    LOCAL_CLIENT_BASE,
     FACE_LIBRARY_DIR,
     FACE_MATCH_THRESHOLD,
     SERVER_CONFIG,
@@ -265,18 +267,39 @@ def student_entry():
     if mode == "practice":
         return redirect(f"{student_base}/")
 
-    notice = ""
-    status = 200
-    if mode == "exam":
-        try:
-            exam = require_open_exam(request.args.get("exam_id"), student["id"])
-        except ExamEntryError as error:
-            notice, status = str(error), error.status
-        else:
-            ticket = exam_ticket.dumps([exam["id"], student["id"], student["name"]])
-            return redirect(f"{student_base}/exam?{urlencode({'ticket': ticket})}")
+    notice = "请选择考试并下载本场规则" if mode == "exam" else ""
+    return render_template("entry.html", student=student, notice=notice,
+                           local_client_base=LOCAL_CLIENT_BASE), 200, {"Cache-Control": "no-store"}
 
-    return render_template("entry.html", student=student, notice=notice), status, {"Cache-Control": "no-store"}
+
+@app.post("/api/exams/<int:exam_id>/prepare")
+def prepare_exam_entry(exam_id):
+    student = session.get("student")
+    if not student:
+        return jsonify(success=False, message="请先登录学生账号"), 401
+    session.pop("exam_entry_ticket", None)
+    session.pop("exam_prepare", None)
+    challenge = secrets.token_urlsafe(24)
+    bundle = exam_rule_ticket(exam_id, student["id"], challenge=challenge)
+    session["exam_prepare"] = {"exam": str(exam_id), "student": str(student["id"]), "challenge": challenge}
+    return jsonify(success=True, rule_ticket=bundle, student_no=student["id"]), 200, {"Cache-Control": "no-store"}
+
+
+@app.post("/api/exams/<int:exam_id>/enter")
+def enter_prepared_exam(exam_id):
+    student = session.get("student")
+    if not student:
+        return jsonify(success=False, message="请先登录学生账号"), 401
+    expected = session.get("exam_prepare")
+    if not expected or expected["exam"] != str(exam_id) or expected["student"] != str(student["id"]):
+        raise ExamEntryError("请先下载所选考试的规则", 409)
+    check_install_receipt((request.get_json(silent=True) or {}).get("receipt"), expected)
+    require_open_exam(exam_id, student["id"])
+    ticket = exam_ticket.dumps([exam_id, student["id"], student["name"]])
+    session["exam_entry_ticket"] = ticket
+    session.pop("exam_prepare")
+    base = get_student_web_base(request.host_url)
+    return jsonify(success=True, url=f"{base}/exam?{urlencode({'ticket': ticket})}"), 200, {"Cache-Control": "no-store"}
 
 
 def score_view_student(sno):

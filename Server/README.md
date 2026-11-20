@@ -22,7 +22,7 @@ python server/app.py
 
 ## 配置
 
-运行配置统一从根目录 `config.env` 读取，由 `tools/config.py` 加载，包括服务器监听地址、数据库地址/账号/密码、学生端本地检测地址、服务器侧人脸识别地址、规则服务地址、Ollama 默认地址和子 WebUI 配置。
+运行配置统一从根目录 `config.env` 读取，由 `tools/config.py` 加载，包括服务器监听地址、数据库地址/账号/密码、学生端本地检测地址、服务器侧人脸识别地址、规则服务地址、OpenAI 兼容模型接口默认地址和子 WebUI 配置。
 
 同名环境变量优先级高于 `config.env`，可用于临时覆盖。也可以通过 `SERVER_CONFIG_FILE=/path/to/config.env` 指定其他配置文件。
 
@@ -33,9 +33,7 @@ python server/app.py
 - `LOCAL_CLIENT_BASE`：学生浏览器直连的本地接线检测服务地址
 - `FACE_RECOGNITION_BASE`：服务器调用的人脸识别服务地址
 - `RULE_SERVER_IP`、`RULE_SERVER_PORT`
-- `OLLAMA_CHAT_HOST`、`OLLAMA_CHAT_PORT`、`OLLAMA_CHAT_MODEL`
-- `OLLAMA_QUESTION_HOST`、`OLLAMA_QUESTION_PORT`、`OLLAMA_QUESTION_MODEL`
-- `FRONTEND_OLLAMA_HOST`、`FRONTEND_OLLAMA_PORT`、`FRONTEND_OLLAMA_MODEL`
+- `MODEL_API_BASE_URL`、`MODEL_CHAT_NAME`、`MODEL_QUESTION_NAME` 为练习端的默认接口地址、对话模型和出题模型。练习页只需输入 vLLM 服务的 IP 与端口，系统自动使用 HTTP 和标准 `/v1` 路径。学生保存的设置优先，按学号存放在 `Server/data/model_settings/`。该目录包含私有凭据，部署迁移时请保留目录权限。
 - `STUDENT_WEB_BASE`、`TEACHER_WEB_BASE`
 
 ## 部署建议
@@ -48,6 +46,8 @@ python server/app.py
 已有 MySQL 库执行 `migrations/001_exam_recording.sql` 后再更新服务。新导入的 `video_project.sql` 已包含这张表。服务器和网关沿用相同的 `EXAM_SCORE_KEY` 配置。服务器运行账户需有归档目录的读写权限。默认目录为 `Server/data/recordings/`，可用 `WIRING_ARCHIVE_DIR` 指向持久化数据盘。备份时同时保存 MySQL 和归档目录。
 
 学生交卷时，网页从本机取得完整 JSON 和网关签名，一并提交到原有成绩接口。服务器核验学号、考试、分数和文件摘要，将文件原子写入归档目录的 `<摘要前两位>/<SHA256>.json`，再在同一个 MySQL 事务中写入成绩和记录索引。重试沿用现有首份成绩。成绩详情按成绩行主键关联归档，历史成绩没有归档时显示“暂无记录”。
+
+考试开始接线后，关闭或刷新考试页会触发浏览器的离开确认。学生确认离开时，网页通知本机网关停止检测、取最终读数并提交成绩和接线记录。网页意外消失时，网关在页面连接断开 45 秒后接手交卷。待提交任务保存在学生机接线记录的 SQLite 库中，网络暂时中断时会重试。学生机的 `server_base`（或环境变量 `SERVER_BASE`）应指向本次考试的服务器地址，服务器仍按原有截止时间接收成绩。
 
 查询某位考生在某次考试的成绩和记录可使用下列参数化查询。
 

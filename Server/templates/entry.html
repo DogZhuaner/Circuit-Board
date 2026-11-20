@@ -51,15 +51,68 @@
     const status = document.getElementById('exam-status');
     const list = document.getElementById('exam-list');
     let checking = false;
+    let entering = false;
+    let failure = '';
+    let prepared = null;
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000)
+      });
+      if (response.status === 404) throw new Error('接口不可用，请确认本机网关与服务端版本一致');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || '请求失败，请重试');
+      return result;
+    }
+    async function downloadSelection(enter) {
+      if (entering || !select.value) return;
+      entering = true;
+      failure = '';
+      select.disabled = button.disabled = true;
+      const id = select.value;
+      const api = '/api/exams/' + encodeURIComponent(id);
+      status.textContent = '正在确认本机考试规则…';
+      try {
+        if (!prepared || prepared.id !== id || prepared.expires <= Date.now()) {
+          const bundle = await postJson(api + '/prepare', {});
+          prepared = {id, bundle, expires: Date.now() + 120000};
+        }
+        const gateway = localStorage.getItem('local_client_base') || {{ local_client_base|tojson }};
+        const local = await postJson(gateway + '/api/exam/prepare', {
+          test_id: id, student_no: prepared.bundle.student_no, rule_ticket: prepared.bundle.rule_ticket
+        });
+        if (!local.supports_exit_submission) throw new Error('请更新本机接线网关，以启用关闭考试页时自动交卷');
+        if (!local.receipt) throw new Error('本机网关未确认规则已保存');
+        if (enter) {
+          const entry = await postJson(api + '/enter', {receipt: local.receipt});
+          location.assign(entry.url);
+          return;
+        }
+        status.textContent = '规则已下载到本机，可以进入考试';
+      } catch (error) {
+        prepared = null;
+        failure = '无法进入考试：' + (error instanceof TypeError || error.name === 'TimeoutError'
+          ? '规则下载连接失败，请检查网络和学生机网关，再点击考试重试。' : error.message);
+        status.textContent = failure;
+      }
+      select.disabled = button.disabled = entering = false;
+    }
+    select.addEventListener('change', () => downloadSelection(false));
+    button.form.addEventListener('submit', event => {
+      event.preventDefault();
+      downloadSelection(true);
+    });
 
     async function refreshExams() {
-      if (checking) return;
+      if (checking || entering) return;
       checking = true;
       try {
         const response = await fetch('/api/exams/open', { cache: 'no-store' });
         if (response.status === 401) { location.replace({{ url_for('login_page')|tojson }}); return; }
         if (!response.ok) throw new Error();
         const { exams } = await response.json();
+        if (entering) return;
         const previous = select.value;
         select.replaceChildren(...exams.map(exam => {
           const label = exam.deadline === '9999-12-31 23:59:59' ? exam.name : exam.name + ' · 截至 ' + exam.deadline;
@@ -68,8 +121,10 @@
         if (exams.some(exam => String(exam.id) === previous)) select.value = previous;
         list.hidden = exams.length === 0;
         button.disabled = exams.length === 0;
-        status.textContent = exams.length ? '当前可参加 ' + exams.length + ' 场考试' : '当前没有可参加的考试';
+        if (prepared && prepared.id !== select.value) prepared = null;
+        status.textContent = exams.length ? (failure || (prepared ? '规则已下载到本机，可以进入考试' : '当前可参加 ' + exams.length + ' 场考试')) : '当前没有可参加的考试';
       } catch {
+        if (entering) return;
         button.disabled = true;
         list.hidden = true;
         status.textContent = '暂时无法查询考试，稍后会自动重试';
@@ -77,7 +132,7 @@
         checking = false;
       }
     }
-    window.addEventListener('pageshow', refreshExams);
+    window.addEventListener('pageshow', () => { prepared = null; entering = false; select.disabled = false; refreshExams(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshExams(); });
     setInterval(refreshExams, 15000);
   </script>

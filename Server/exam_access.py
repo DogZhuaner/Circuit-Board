@@ -1,7 +1,8 @@
+import hashlib
 import json
 from typing import Optional
 
-from itsdangerous import URLSafeSerializer, URLSafeTimedSerializer
+from itsdangerous import BadData, URLSafeSerializer, URLSafeTimedSerializer
 
 from db import MySQLConnector
 from tools.config import EXAM_SCORE_KEY, STUDENT_WEB_CONFIG
@@ -42,11 +43,11 @@ def open_exam_rows(student_no, fields, exam_id=None):
 def open_exams(student_no, exam_id: Optional[int] = None) -> list[dict]:
     fields = "e.id, e.test_name, e.deadline_time"
     if exam_id is not None:
-        fields += ", e.exam_content, e.rule_filename"
+        fields += ", e.exam_content, e.rule_filename, e.publish_time"
     rows = open_exam_rows(student_no, fields, exam_id)
     exams = [{"id": row[0], "name": row[1], "deadline": str(row[2])} for row in rows]
     if exam_id is not None and rows:
-        exams[0].update(content=rows[0][3], rule_filename=rows[0][4])
+        exams[0].update(content=rows[0][3], rule_filename=rows[0][4], start=str(rows[0][5]))
     return exams
 
 
@@ -61,7 +62,7 @@ def require_open_exam(raw_id: object, student_no) -> dict:
     return exams[0]
 
 
-def exam_rule_ticket(exam_id, student_no):
+def exam_rule_ticket(exam_id, student_no, *, challenge=None, close_submission=None):
     rows = open_exam_rows(student_no, "e.rule_filename, e.rule_snapshot", exam_id)
     if not rows:
         raise ExamEntryError("考试当前未开放", 409)
@@ -77,5 +78,21 @@ def exam_rule_ticket(exam_id, student_no):
     if not isinstance(rules, list) or not rules:
         raise ExamEntryError("本场考试的接线规则副本无效，请联系教师", 409)
     signer = URLSafeTimedSerializer(EXAM_SCORE_KEY, salt="wiring-exam-rule-v1")
-    return signer.dumps({"exam": str(exam_id), "student": str(student_no),
-                         "filename": filename, "rules": rules})
+    content = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    bundle = {"exam": str(exam_id), "student": str(student_no), "filename": filename,
+              "sha256": hashlib.sha256(content).hexdigest()}
+    if close_submission:
+        bundle["close_submission"] = close_submission
+    if challenge:
+        bundle.update(rules=rules, challenge=challenge)
+    return signer.dumps(bundle)
+
+
+def check_install_receipt(receipt, expected):
+    try:
+        actual = URLSafeTimedSerializer(EXAM_SCORE_KEY, salt="wiring-rule-installed-v1").loads(
+            receipt or "", max_age=180)
+    except (BadData, TypeError):
+        raise ExamEntryError("未收到有效的本机规则下载确认，请重试", 409) from None
+    if not expected or actual != expected:
+        raise ExamEntryError("本机下载确认与所选考试不符，请重新选择", 409)

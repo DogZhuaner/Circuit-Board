@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -8,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
@@ -20,6 +22,7 @@ from requests.adapters import HTTPAdapter, Retry
 from global_config import Global_Config
 from script.serial_tools import STM32Tool, serialized_capture
 from script.wiring_recorder import WiringRecorder
+from script.exam_exit import ExamExitQueue
 
 
 app = Flask(__name__)
@@ -128,6 +131,53 @@ def get_recording_store() -> WiringRecorder:
                 path = Path(__file__).resolve().parent / path
             recording_store = WiringRecorder(path, recover=True)
         return recording_store
+
+
+exit_queue = None
+exit_queue_lock = threading.Lock()
+
+
+def get_exit_queue():
+    global exit_queue
+    with exit_queue_lock:
+        if exit_queue is None:
+            exit_queue = ExamExitQueue(get_recording_store(), submit_after_exit)
+            threading.Thread(target=exit_queue.run, daemon=True, name="exam-exit-submit").start()
+        return exit_queue
+
+
+@app.get("/api/exam/page/<token>/watch")
+def watch_exam_page(token):
+    queue = get_exit_queue()
+    with lifecycle_lock:
+        if not queue.state(token):
+            return jsonify(success=False, message="未找到本次检测"), 404
+
+    def stream():
+        with queue.connected(token):
+            while True:
+                current = queue.state(token)
+                if not current or current["state"] != "armed":
+                    yield "event: submission\ndata: " + json.dumps(current) + "\n\n"
+                    return
+                yield ": connected\n\n"
+                time.sleep(2)
+    return Response(stream(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/exam/page/<token>/leave")
+def leave_exam_page(token):
+    with lifecycle_lock:
+        get_exit_queue().leave(token)
+    return "", 204
+
+
+@app.post("/api/exam/page/<token>/release")
+def release_exam_page(token):
+    if not get_exit_queue().release(token):
+        return jsonify(success=False, message="网关已接手交卷"), 409
+    return "", 204
 
 
 def record_capture(recording_id: str, named_result: Dict[str, Any],
@@ -486,16 +536,6 @@ def current_server_base() -> str:
     return str(runtime_context.get("server_base") or SERVER_BASE).rstrip("/")
 
 
-def safe_local_rule_path(save_path: Optional[str] = None) -> Path:
-    if save_path:
-        target_path = Path(save_path)
-        if not target_path.is_absolute():
-            target_path = Path(__file__).resolve().parent / target_path
-    else:
-        target_path = LOCAL_RULE_PATH
-    return target_path.resolve()
-
-
 def relative_to_project(path: Path) -> str:
     project_root = Path(__file__).resolve().parent
     try:
@@ -842,12 +882,39 @@ def exam_score_key():
     return key
 
 
-# Keep the practice rule on disk and restore it when an exam attempt ends.
-practice_rule = None
+def write_rule_bytes(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = None
+    try:
+        with NamedTemporaryFile(dir=path.parent, delete=False) as staging:
+            tmp = Path(staging.name)
+            staging.write(content)
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
 
 
-def activate_exam_rule(payload):
-    global practice_rule
+def install_local_rule(rules, selection):
+    if not isinstance(rules, list) or not rules:
+        raise ValueError("规则文件为空或格式错误")
+    content = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    metadata = dict(selection, sha256=hashlib.sha256(content).hexdigest())
+    write_rule_bytes(LOCAL_RULE_PATH, content)
+    write_rule_bytes(LOCAL_RULE_PATH.with_suffix(".selection"), json.dumps(metadata).encode())
+
+
+def local_rule_selection():
+    try:
+        selection = json.loads(LOCAL_RULE_PATH.with_suffix(".selection").read_bytes())
+        if selection["sha256"] == hashlib.sha256(LOCAL_RULE_PATH.read_bytes()).hexdigest():
+            return selection
+    except (ValueError, KeyError, TypeError, OSError):
+        pass
+    return {}
+
+
+def unpack_exam_rule(payload):
     key = exam_score_key()
     if not key:
         raise ValueError("本机网关尚未配置考试成绩签名密钥")
@@ -855,24 +922,47 @@ def activate_exam_rule(payload):
         bundle = URLSafeTimedSerializer(key, salt="wiring-exam-rule-v1").loads(
             payload.get("rule_ticket") or "", max_age=180)
     except BadData:
-        raise ValueError("考试规则凭据无效或已过期，请重新开始检测") from None
+        raise ValueError("考试规则凭据无效或已过期，请重新选择考试") from None
     if bundle["exam"] != str(payload.get("test_id")) or bundle["student"] != str(payload.get("student_no")):
-        raise ValueError("考试规则与本次检测身份不符")
-    exam_id = int(bundle["exam"])
-    path = LOCAL_RULE_PATH.parent / ".exam" / f"{exam_id}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(bundle["rules"], ensure_ascii=False), encoding="utf-8")
-    practice_rule = (Global_Config.test_rule, get_rule_filename())
-    payload["rule_file"] = payload["rule_filename"] = bundle["filename"]
-    update_active_rule_path(path, bundle["filename"])
+        raise ValueError("考试规则与学生或考试不符")
+    return bundle
 
 
-def restore_practice_rule():
-    global practice_rule
-    if practice_rule:
-        update_active_rule_path(*practice_rule)
-        runtime_context["rule_file"] = practice_rule[1]
-        practice_rule = None
+def exam_selection(bundle):
+    return {key: bundle[key] for key in ("exam", "student", "filename")}
+
+
+def matches_exam(bundle):
+    selection = local_rule_selection()
+    return (bool(bundle.get("sha256")) and selection.get("sha256") == bundle["sha256"]
+            and all(selection.get(k) == v for k, v in exam_selection(bundle).items()))
+
+
+@app.post("/api/exam/prepare")
+@serialized_lifecycle
+def prepare_exam_rule():
+    try:
+        bundle = unpack_exam_rule(request.get_json(silent=True) or {})
+        if not bundle.get("challenge"):
+            raise ValueError("请从选考页下载规则")
+        if not matches_exam(bundle):
+            if active_recording_id or is_detector_running():
+                return jsonify(success=False, message="请先结束本机正在进行的检测"), 409
+            install_local_rule(bundle["rules"], exam_selection(bundle))
+            if not matches_exam(bundle):
+                raise ValueError("本机规则文件校验失败，请重新下载")
+        receipt = URLSafeTimedSerializer(exam_score_key(), salt="wiring-rule-installed-v1").dumps(
+            {k: bundle[k] for k in ("exam", "student", "challenge")})
+        return jsonify(success=True, receipt=receipt, supports_exit_submission=True)
+    except (OSError, ValueError) as error:
+        return jsonify(success=False, message=f"考试规则下载失败：{error}"), 400
+
+
+@app.get("/api/rules/local")
+@serialized_lifecycle
+def local_practice_rule():
+    selection = local_rule_selection()
+    return jsonify(success=True, filename=None if "exam" in selection else selection.get("filename"))
 
 
 @app.post("/api/exam/start")
@@ -906,18 +996,32 @@ def start_yolo():
 
     if request.path == "/api/exam/start":
         try:
-            activate_exam_rule(payload)
+            bundle = unpack_exam_rule(payload)
+            exit_token = payload.get("exit_token")
+            if not isinstance(exit_token, str) or not re.fullmatch(r"[0-9a-f]{32}", exit_token) or not bundle.get("close_submission"):
+                raise ValueError("请刷新考试页面，以启用关闭时自动交卷")
+            if not matches_exam(bundle):
+                raise ValueError("本机考试规则已变更，请返回选考页重新下载")
+            payload["rule_filename"] = payload["rule_file"] = bundle["filename"]
         except (ValueError, OSError) as exc:
             return jsonify(success=False, message=str(exc)), 400
     else:
         if payload.get("test_id") or payload.get("rule_ticket"):
             return jsonify(success=False, message="考试检测必须使用本场考试的规则凭据"), 400
+        selection = local_rule_selection()
+        if not selection or "exam" in selection:
+            return jsonify(success=False, message="请先选择练习规则并设为本机当前规则"), 409
+        if payload.get("rule_filename") and payload["rule_filename"] != selection["filename"]:
+            return jsonify(success=False, message="本机练习规则已切换，请重新设为当前"), 409
+        payload["rule_filename"] = payload["rule_file"] = selection["filename"]
         payload["test_id"] = ""
         payload["test_name"] = ""
 
+    update_active_rule_path(LOCAL_RULE_PATH, payload["rule_filename"])
     update_runtime_context(payload)
     stm_started = False
     started_recording_id = None
+    exit_armed = False
     try:
         matrix_tool = stm_tool_from_payload(payload)
         stm_started = matrix_tool.start_detection_mode()
@@ -961,6 +1065,10 @@ def start_yolo():
         started_recording_id = active_recording_id
         recording_error = None
         module = load_detection_module()
+        if request.path == "/api/exam/start":
+            close = bundle["close_submission"]
+            get_exit_queue().arm(exit_token, session_id, started_recording_id, SERVER_BASE + close["path"], close["ticket"])
+            exit_armed = True
         detector, detection_thread = module.start_hand_detection(
             on_snapshot=lambda named, score: record_capture(started_recording_id, named, score))
         detection_started_at = iso_now()
@@ -985,6 +1093,8 @@ def start_yolo():
             }
         )
     except Exception as exc:
+        if exit_armed:
+            get_exit_queue().release(exit_token)
         if started_recording_id:
             get_recording_store().finish(started_recording_id, "failed")
         active_recording_id = None
@@ -1008,17 +1118,17 @@ def start_yolo():
             }
         ), 500
 
-    finally:
-        if not active_recording_id:
-            restore_practice_rule()
 
 
 @app.route("/api/yolo/stop", methods=["POST"])
 @serialized_lifecycle
 def stop_yolo():
+    return stop_detection(request.get_json(silent=True) or {})
+
+
+def stop_detection(payload):
     global detector, detection_thread, detection_started_at, active_session_id, active_recording_id, recording_error
 
-    payload = request.get_json(silent=True) or {}
     session_id = get_request_session_id(payload)
     session_state = get_or_create_session_state(session_id)
 
@@ -1094,7 +1204,6 @@ def stop_yolo():
         if payload.get("submit_exam_result"):
             report_payload = build_exam_report_payload(payload.get("exam_result") or {})
             response["exam_report"] = post_to_server("/student/api/exam_result", report_payload)
-        restore_practice_rule()
         return jsonify(response)
     except Exception as exc:
         return jsonify({"success": False, "message": f"停止失败: {exc}", "running": is_detector_running()}), 500
@@ -1174,13 +1283,11 @@ def pull_current_rule():
     if active_recording_id or is_detector_running():
         return jsonify(success=False, message="请先停止当前检测再切换规则"), 409
     payload = request.get_json(silent=True) or {}
-    update_runtime_context(payload)
-
     download_url = build_rule_download_url(payload)
     if not download_url:
         return jsonify({"success": False, "message": "缺少规则下载地址"}), 400
 
-    local_path = safe_local_rule_path(payload.get("save_path"))
+    local_path = LOCAL_RULE_PATH
     try:
         response = http.get(download_url, timeout=REQUEST_TIMEOUT)
         if response.status_code >= 400:
@@ -1193,12 +1300,9 @@ def pull_current_rule():
             ), 502
 
         rule_json = validate_rule_json(response.content)
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        local_path.write_text(
-            json.dumps(rule_json, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        update_active_rule_path(local_path, local_path.name)
+        name = payload.get("filename") or local_path.name
+        install_local_rule(rule_json, {"filename": name})
+        update_active_rule_path(local_path, name)
         return jsonify(
             {
                 "success": True,
@@ -1207,7 +1311,7 @@ def pull_current_rule():
                 "relative_path": relative_to_project(local_path),
                 "bytes": local_path.stat().st_size,
                 "download_url": download_url,
-                "rule_filename": local_path.name,
+                "rule_filename": name,
             }
         )
     except Exception as exc:
@@ -1370,11 +1474,14 @@ def read_recording(recording_id: str):
 
 @app.post("/api/recordings/<recording_id>/exam-receipt")
 def exam_receipt(recording_id):
+    return build_exam_receipt(recording_id, include_archive=request.args.get("archive") == "1")
+
+
+def build_exam_receipt(recording_id, include_archive):
     key = exam_score_key()
     if not key:
         return jsonify(success=False, message="本机网关尚未配置考试成绩签名密钥"), 503
     try:
-        include_archive = request.args.get("archive") == "1"
         record = get_recording_store().read(recording_id, limit=None if include_archive else 0)
     except KeyError:
         return jsonify(success=False, message="未找到本次检测记录"), 404
@@ -1396,6 +1503,29 @@ def exam_receipt(recording_id):
     return jsonify(receipt=receipt, **response)
 
 
+def submit_after_exit(job):
+    # Capture a final hardware reading only for the exact attempt that lost its page.
+    with app.app_context():
+        with lifecycle_lock:
+            if active_recording_id == job["recording"]:
+                if active_session_id != job["session"]:
+                    return "failed", "接线会话与交卷记录不符"
+                stopped = app.make_response(stop_detection({"session_id": job["session"]}))
+                if not stopped.json["success"]:
+                    return "queued", stopped.json["message"]
+        result = app.make_response(build_exam_receipt(job["recording"], include_archive=True))
+        if result.status_code != 200:
+            return ("queued" if result.status_code >= 500 else "failed"), result.json["message"]
+        submission = result.get_json()
+    submission["ticket"] = job["ticket"]
+    response = requests.post(job["destination"], json=submission, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+    if response.ok and response.json().get("success"):
+        return "submitted", str(response.json()["score"])
+    if response.status_code in (400, 401, 403, 404, 409, 410):
+        return "failed", response.json().get("message", "考试提交失败")
+    return "queued", "暂时无法提交，网关将重试"
+
+
 @app.route("/api/recordings/<recording_id>/export", methods=["GET"])
 def export_recording(recording_id: str):
     try:
@@ -1408,6 +1538,7 @@ def export_recording(recording_id: str):
 
 
 if __name__ == "__main__":
+    get_exit_queue()
     host = os.getenv("CLIENT_HOST", "127.0.0.1")
     port = int(os.getenv("CLIENT_PORT", "6001"))
     app.run(host=host, port=port, debug=False)
