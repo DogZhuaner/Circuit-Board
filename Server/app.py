@@ -337,7 +337,9 @@ def score_review(result_id, sno=None):
     db = MySQLConnector()
     try:
         rows = db.query(
-            "SELECT r.test_name,w.sha256 FROM exam_result r JOIN exam_recording w ON w.result_id=r.id "
+            "SELECT r.test_name,w.sha256,r.test_id,e.rule_snapshot FROM exam_result r "
+            "JOIN exam_recording w ON w.result_id=r.id "
+            "LEFT JOIN exam_test e ON BINARY r.test_id=BINARY CAST(e.id AS CHAR) "
             "WHERE r.id=%s AND r.student_no=%s", (result_id, student["id"]))
     except RuntimeError:
         abort(503)
@@ -355,7 +357,7 @@ def exam_score_review(exam_id: int, result_id: int):
     db = MySQLConnector()
     try:
         rows = db.query(
-            "SELECT e.test_name,w.sha256 FROM exam_test e "
+            "SELECT e.test_name,w.sha256,r.test_id,e.rule_snapshot FROM exam_test e "
             "JOIN exam_result r ON r.test_id=%s "
             "JOIN exam_recording w ON w.result_id=r.id "
             "WHERE e.id=%s AND e.issuer_tno=%s AND e.deadline_time<=NOW() "
@@ -369,13 +371,39 @@ def exam_score_review(exam_id: int, result_id: int):
     return render_wiring_review(*rows[0])
 
 
-def render_wiring_review(name: str, digest: str, scores_url: Optional[str] = None):
+def review_correct_pairs(record: dict, rules):
+    if isinstance(rules, dict):
+        rules = rules.get("data") if isinstance(rules.get("data"), list) else rules.get("items")
+    if not isinstance(rules, list):
+        return None
+
+    # The scorer ignores terminal order and surrounding whitespace, including for zero-point rules.
+    def pair_key(pair):
+        return tuple(sorted(str(node).strip() for node in pair))
+
+    answers = {pair_key(rule["nodes"]) for rule in rules if isinstance(rule, dict)
+               and isinstance(rule.get("nodes"), list) and len(rule["nodes"]) == 2}
+    # Send only matches that actually appear in this recording.
+    observed = {tuple(pair) for pair in record["initial_state"]["pairs"]}
+    observed.update(tuple(event["terminals"]) for event in record["events"])
+    return sorted(pair for pair in observed if pair_key(pair) in answers)
+
+
+def render_wiring_review(name: str, digest: str, exam_id: str, snapshot: Optional[str], scores_url: Optional[str] = None):
     try:
         record = json.loads(archive_path(digest).read_bytes())
+        captured_rules = record["metadata"].pop("rule_snapshot", None)
+        rules = None
+        if snapshot is not None:
+            rules = json.loads(snapshot)
+        elif str(record["metadata"].get("test_id")) == str(exam_id):
+            rules = captured_rules
+        correct_pairs = review_correct_pairs(record, rules)
     except (OSError, ValueError):
         app.logger.exception("读取接线归档 %s 失败", digest)
         return "暂时无法读取接线记录，请稍后重试。", 503, {"Cache-Control": "no-store"}
-    return render_template("review.html", name=name, record=record, scores_url=scores_url), 200, {"Cache-Control": "no-store"}
+    return render_template("review.html", name=name, record=record, correct_pairs=correct_pairs,
+                           scores_url=scores_url), 200, {"Cache-Control": "no-store"}
 
 
 @app.route("/health", methods=["GET"])

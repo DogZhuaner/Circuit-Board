@@ -789,7 +789,12 @@
                         <div class="card card-custom h-100" data-entry="right">
                             <div class="card-header bg-primary text-white">
                                 <h5 class="mb-0">
-                                    <i class="bi bi-gear me-2"></i>
+                                    <button v-if="!selectedExam" type="button" class="btn btn-sm btn-outline-light me-2"
+                                            title="大模型设置" aria-label="大模型设置" aria-haspopup="dialog"
+                                            @click="openAiModelSettingModal">
+                                        <i class="bi bi-gear" aria-hidden="true"></i>
+                                    </button>
+                                    <i v-else class="bi bi-gear me-2" aria-hidden="true"></i>
                                     操作控制
                                 </h5>
                             </div>
@@ -1007,40 +1012,6 @@
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <!-- Ollama设置 -->
-                        <div class="card mb-3">
-                            <div class="card-header">
-                                <i class="bi bi-gear me-2"></i>
-                                大模型设置
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-2">
-                                    <div class="col-md-4">
-                                        <input v-model="aiOllamaConfig.ip" class="form-control" placeholder="Ollama IP" />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input v-model="aiOllamaConfig.port" class="form-control" placeholder="端口号" />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input v-model="aiOllamaConfig.model" class="form-control" placeholder="模型名称" />
-                                    </div>
-                                </div>
-                                <div class="mt-2">
-                                    <button @click="testAiOllamaConnection" class="btn btn-sm btn-outline-primary me-2">
-                                        测试连接
-                                    </button>
-                                    <button @click="saveAiOllamaConfig" class="btn btn-sm btn-primary">
-                                        保存设置
-                                    </button>
-                                </div>
-                                <div v-if="aiConnectionStatus" class="mt-2">
-                                    <div :class="aiConnectionStatus.success ? 'alert alert-success' : 'alert alert-danger'">
-                                        {{ aiConnectionStatus.message }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- 聊天记录 -->
                         <div class="chat-container mb-3">
                             <div v-for="message in chatMessages" :key="message.id" class="message" :class="message.type">
@@ -1088,37 +1059,6 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <!-- Ollama设置 -->
-                        <div class="card mb-3">
-                            <div class="card-header">大模型设置</div>
-                            <div class="card-body">
-                                <div class="row g-2">
-                                    <div class="col-md-4">
-                                        <input v-model="ollamaConfig.ip" class="form-control" placeholder="Ollama IP" />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input v-model="ollamaConfig.port" class="form-control" placeholder="端口号" />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input v-model="ollamaConfig.model" class="form-control" placeholder="模型名称" />
-                                    </div>
-                                </div>
-                                <div class="mt-2">
-                                    <button @click="testOllamaConnection" class="btn btn-sm btn-outline-primary me-2">
-                                        测试连接
-                                    </button>
-                                    <button @click="saveOllamaConfig" class="btn btn-sm btn-primary">
-                                        保存设置
-                                    </button>
-                                </div>
-                                <div v-if="connectionStatus" class="mt-2">
-                                    <div :class="connectionStatus.success ? 'alert alert-success' : 'alert alert-danger'">
-                                        {{ connectionStatus.message }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- 题目生成 -->
                         <div class="card">
                             <div class="card-header">题目生成</div>
@@ -1164,81 +1104,51 @@
             </div>
         </div>
 
-        <!-- AI模型设置弹窗 -->
-        <div v-if="!selectedExam" class="modal fade" id="aiModelSettingModal" tabindex="-1">
+        <div v-if="!selectedExam" class="modal fade" id="aiModelSettingModal" tabindex="-1" aria-labelledby="modelSettingsTitle">
             <div class="modal-dialog">
-                <div class="modal-content">
+                <form v-if="modelDraft" class="modal-content" @submit.prevent="discoverModels">
                     <div class="modal-header card-header-ai">
-                        <h5 class="modal-title"><i class="bi bi-gear me-2"></i>AI模型设置</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title" id="modelSettingsTitle">大模型设置</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
                     </div>
                     <div class="modal-body">
-                        <!-- Ollama设置 -->
-                        <div class="card mb-3">
-                            <div class="card-header">
-                                <i class="bi bi-gear me-2"></i>
-                                大模型设置
+                        <p class="text-muted small">AI 对话和知识点出题共用此服务地址，可分别选择模型。</p>
+                        <div class="row g-2 mb-3">
+                            <div class="col-8">
+                                <label class="form-label" for="model-host">模型服务地址</label>
+                                <input id="model-host" class="form-control" placeholder="IP 或主机名" required
+                                       v-model.trim="modelDraft.ip" @input="resetModelList" :disabled="modelDraft.busy">
                             </div>
-                            <div class="card-body">
-                                <div class="row g-2">
-                                    <div class="col-md-4">
-                                        <input v-model="aiOllamaConfig.ip" class="form-control" placeholder="Ollama IP" />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input v-model="aiOllamaConfig.port" class="form-control" placeholder="端口号" />
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input v-model="aiOllamaConfig.model" class="form-control" placeholder="模型名称" />
-                                    </div>
-                                </div>
-                                <div class="mt-2">
-                                    <button @click="testAiOllamaConnection" class="btn btn-sm btn-outline-primary me-2">
-                                        测试连接
-                                    </button>
-                                    <button @click="saveAiOllamaConfig" class="btn btn-sm btn-primary">
-                                        保存设置
-                                    </button>
-                                </div>
-                                <div v-if="aiConnectionStatus" class="mt-2">
-                                    <div :class="aiConnectionStatus.success ? 'alert alert-success' : 'alert alert-danger'">
-                                        {{ aiConnectionStatus.message }}
-                                    </div>
-                                </div>
+                            <div class="col-4">
+                                <label class="form-label" for="model-port">端口号</label>
+                                <input id="model-port" class="form-control" type="number" min="1" max="65535" required
+                                       v-model="modelDraft.port" @input="resetModelList" :disabled="modelDraft.busy">
                             </div>
                         </div>
-
-                        <!-- 聊天记录 -->
-                        <div class="chat-container mb-3">
-                            <div v-for="message in chatMessages" :key="message.id" class="message" :class="message.type">
-                                <div class="message-header">
-                                    <small class="text-muted">{{ message.timestamp }}</small>
-                                </div>
-                                <div class="message-content">
-                                    {{ message.content }}
-                                </div>
+                        <button type="submit" class="btn btn-outline-primary" :disabled="modelDraft.busy">
+                            {{ modelDraft.busy ? '正在测试并获取模型…' : '测试连接并获取模型' }}
+                        </button>
+                        <p role="status" class="small mt-2 mb-0" :class="modelDraft.failed ? 'text-danger' : 'text-secondary'">{{ modelDraft.message }}</p>
+                        <div v-if="modelDraft.models.length" class="row g-2 mt-2">
+                            <div class="col-sm-6">
+                                <label class="form-label" for="chat-model">AI 对话模型</label>
+                                <select id="chat-model" class="form-select" v-model="modelDraft.chat">
+                                    <option v-for="name in modelDraft.models" :key="name">{{ name }}</option>
+                                </select>
                             </div>
-                        </div>
-
-                        <!-- 输入框 -->
-                        <div class="input-group">
-                            <input
-                                type="text"
-                                class="form-control"
-                                v-model="questionInput"
-                                @keyup.enter="sendQuestion"
-                                placeholder="请输入您的问题..."
-                                :disabled="aiLoading">
-                            <button
-                                class="btn btn-primary"
-                                @click="sendQuestion"
-                                :disabled="!questionInput.trim() || aiLoading">
-                                <span v-if="aiLoading" class="loading-spinner"></span>
-                                <i v-else class="bi bi-send"></i>
-                                发送
-                            </button>
+                            <div class="col-sm-6">
+                                <label class="form-label" for="question-model">知识点出题模型</label>
+                                <select id="question-model" class="form-select" v-model="modelDraft.question">
+                                    <option v-for="name in modelDraft.models" :key="name">{{ name }}</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
-                </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="button" class="btn btn-primary" @click="saveModelSettings" :disabled="!modelDraft.models.length">保存设置</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1313,7 +1223,7 @@
                         port: OLLAMA_DEFAULTS.port,
                         model: OLLAMA_DEFAULTS.model
                     },
-                    aiConnectionStatus: null,
+                    modelDraft: null,
 
                     // 新增：空气开关状态和错误接线次数
                     airSwitchClosed: false,
@@ -1367,15 +1277,12 @@
 
                 this.loadRuleFiles();
                 
-                // 从localStorage加载Ollama配置，用于自动生成题目
-                const savedIp = localStorage.getItem('ollama_ip');
-                const savedPort = localStorage.getItem('ollama_port');
-                const savedModel = localStorage.getItem('ollama_model');
+                for (const [config, prefix] of [[this.ollamaConfig, 'ollama_'], [this.aiOllamaConfig, 'ai_ollama_']]) {
+                    for (const key of ['ip', 'port', 'model']) {
+                        config[key] = localStorage.getItem(prefix + key) || config[key];
+                    }
+                }
 
-                if (savedIp) this.ollamaConfig.ip = savedIp;
-                if (savedPort) this.ollamaConfig.port = savedPort;
-                if (savedModel) this.ollamaConfig.model = savedModel;
-                
                 // 加载知识点列表，用于自动生成题目
                 this.loadKnowledgeList();
             },
@@ -1902,15 +1809,6 @@
                 openAiChat() {
                     const modal = new bootstrap.Modal(document.getElementById('aiChatModal'));
                     modal.show();
-
-                    // 从localStorage加载AI对话的Ollama配置
-                    const savedAiIp = localStorage.getItem('ai_ollama_ip');
-                    const savedAiPort = localStorage.getItem('ai_ollama_port');
-                    const savedAiModel = localStorage.getItem('ai_ollama_model');
-
-                    if (savedAiIp) this.aiOllamaConfig.ip = savedAiIp;
-                    if (savedAiPort) this.aiOllamaConfig.port = savedAiPort;
-                    if (savedAiModel) this.aiOllamaConfig.model = savedAiModel;
                 },
 
                 // 发送问题
@@ -2064,92 +1962,50 @@
                     }
                 },
 
-                // 测试Ollama连接
-                async testOllamaConnection() {
-                    if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
-                        this.alertInPractice('请先配置Ollama大模型设置！');
-                        return;
-                    }
+                resetModelList() {
+                    this.modelDraft.models = [];
+                    this.modelDraft.message = '';
+                    this.modelDraft.failed = false;
+                },
 
-                    this.connectionStatus = { message: '正在测试连接...', success: null };
+                async discoverModels() {
+                    const draft = this.modelDraft;
+                    if (draft.busy) return;
+                    this.resetModelList();
+                    draft.busy = true;
                     try {
                         const response = await fetch('api/test_ollama_connection', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                ip: this.ollamaConfig.ip,
-                                port: parseInt(this.ollamaConfig.port),
-                                model_name: this.ollamaConfig.model
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ip: draft.ip, port: draft.port })
                         });
-
-                        const data = await response.json();
-                        this.connectionStatus = data;
+                        const result = await response.json();
+                        if (!response.ok || !result.success) throw new Error(result.message || '获取模型失败，请重试。');
+                        draft.ip = result.host;
+                        draft.models = result.models;
+                        for (const key of ['chat', 'question']) {
+                            if (!draft.models.includes(draft[key])) draft[key] = draft.models[0] || '';
+                        }
+                        draft.message = draft.models.length ? '连接成功，请选择模型。' : '连接成功，服务中暂无可用模型。';
                     } catch (error) {
-                        this.connectionStatus = { message: `连接测试失败: ${error.message}`, success: false };
+                        draft.failed = true;
+                        draft.message = error.message;
+                    } finally {
+                        draft.busy = false;
                     }
                 },
 
-                // 保存Ollama配置
-                saveOllamaConfig() {
-                    if (!this.ollamaConfig.ip || !this.ollamaConfig.port || !this.ollamaConfig.model) {
-                        this.alertInPractice('请填写完整的Ollama大模型设置！');
-                        return;
+                saveModelSettings() {
+                    const draft = this.modelDraft;
+                    if (!draft.models.includes(draft.chat) || !draft.models.includes(draft.question)) return;
+                    for (const [config, prefix, model] of [
+                        [this.aiOllamaConfig, 'ai_ollama_', draft.chat],
+                        [this.ollamaConfig, 'ollama_', draft.question]
+                    ]) {
+                        Object.assign(config, { ip: draft.ip, port: String(draft.port), model });
+                        for (const key of ['ip', 'port', 'model']) localStorage.setItem(prefix + key, config[key]);
                     }
-
-                    // 保存到localStorage
-                    localStorage.setItem('ollama_ip', this.ollamaConfig.ip);
-                    localStorage.setItem('ollama_port', this.ollamaConfig.port);
-                    localStorage.setItem('ollama_model', this.ollamaConfig.model);
-
-                    this.alertInPractice('Ollama大模型配置已保存！');
-                    this.testOllamaConnection(); // 重新测试连接
-                },
-
-                // 测试AI Ollama连接
-                async testAiOllamaConnection() {
-                    if (!this.aiOllamaConfig.ip || !this.aiOllamaConfig.port || !this.aiOllamaConfig.model) {
-                        this.alertInPractice('请先配置AI Ollama大模型设置！');
-                        return;
-                    }
-
-                    this.aiConnectionStatus = { message: '正在测试连接...', success: null };
-                    try {
-                        const response = await fetch('api/test_ollama_connection', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                ip: this.aiOllamaConfig.ip,
-                                port: parseInt(this.aiOllamaConfig.port),
-                                model_name: this.aiOllamaConfig.model
-                            })
-                        });
-
-                        const data = await response.json();
-                        this.aiConnectionStatus = data;
-                    } catch (error) {
-                        this.aiConnectionStatus = { message: `连接测试失败: ${error.message}`, success: false };
-                    }
-                },
-
-                // 保存AI Ollama配置
-                saveAiOllamaConfig() {
-                    if (!this.aiOllamaConfig.ip || !this.aiOllamaConfig.port || !this.aiOllamaConfig.model) {
-                        this.alertInPractice('请填写完整的AI Ollama大模型设置！');
-                        return;
-                    }
-
-                    // 保存到localStorage
-                    localStorage.setItem('ai_ollama_ip', this.aiOllamaConfig.ip);
-                    localStorage.setItem('ai_ollama_port', this.aiOllamaConfig.port);
-                    localStorage.setItem('ai_ollama_model', this.aiOllamaConfig.model);
-
-                    this.alertInPractice('AI Ollama大模型配置已保存！');
-                    this.testAiOllamaConnection(); // 重新测试连接
+                    bootstrap.Modal.getInstance(document.getElementById('aiModelSettingModal')).hide();
                 },
 
                 // 格式化题目内容
@@ -2163,15 +2019,6 @@
                 openQuestionGeneration() {
                     const modal = new bootstrap.Modal(document.getElementById('questionGenerationModal'));
                     modal.show();
-
-                    // 从localStorage加载配置
-                    const savedIp = localStorage.getItem('ollama_ip');
-                    const savedPort = localStorage.getItem('ollama_port');
-                    const savedModel = localStorage.getItem('ollama_model');
-
-                    if (savedIp) this.ollamaConfig.ip = savedIp;
-                    if (savedPort) this.ollamaConfig.port = savedPort;
-                    if (savedModel) this.ollamaConfig.model = savedModel;
 
                     // 加载知识点列表
                     this.loadKnowledgeList();
@@ -2330,8 +2177,12 @@
                 },
 
                 openAiModelSettingModal() {
-                    const modal = new bootstrap.Modal(document.getElementById('aiModelSettingModal'));
-                    modal.show();
+                    const endpoint = localStorage.getItem('ollama_ip') ? this.ollamaConfig : this.aiOllamaConfig;
+                    this.modelDraft = {
+                        ip: endpoint.ip, port: endpoint.port, chat: this.aiOllamaConfig.model,
+                        question: this.ollamaConfig.model, models: [], busy: false, failed: false, message: ''
+                    };
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('aiModelSettingModal')).show();
                 }
             }
         });

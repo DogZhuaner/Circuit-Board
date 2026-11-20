@@ -373,7 +373,8 @@ def list_rule_files():
 
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    rule_count = len(json.load(f))
+                    rules = json.load(f)
+                    rule_count = 0 if rules == [] else len(validate_rule_payload(rules))
             except Exception:
                 rule_count = None
 

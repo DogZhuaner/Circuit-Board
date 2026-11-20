@@ -42,7 +42,9 @@
             <option v-else value="" disabled>{{ loading ? '正在读取规则文件…' : '请选择规则文件' }}</option>
             <option v-for="file in files" :key="file.filename" :value="file.filename">{{ file.filename }}</option>
           </select></label>
-          <small>{{ initialExam ? '选择文件后，将使用该文件当前的内容重新保存评分规则。' : files.length || loading ? '发布时保存规则副本，供本场考试评分使用。' : '暂无可用规则，请先在「制定接线规则」中保存文件。' }}</small>
+          <small v-if="initialExam">选择文件后，将使用该文件当前的内容重新保存评分规则。</small>
+          <small v-else-if="!loading && !files.length">暂无可用规则，请先在「制定接线规则」中保存文件。</small>
+          <small v-else>{{ form.rule_filename ? '发布时保存规则副本，供本场考试评分使用。' : '请选择接线规则文件后再发布考试。' }}</small>
         </section>
         <div class="teach-footer"><button type="button" class="roster-link" @click="close" :disabled="busy">取消</button>
           <button class="roster-primary" :disabled="!canSaveExam">{{ initialExam ? (busy ? '正在保存…' : '保存修改') : (busy ? '正在发布…' : '发布考试') }}</button>

@@ -62,7 +62,9 @@ const TeachingDialog = {
         },
         canSaveExam() {
             if (this.busy || this.loading || this.locked) return false;
-            if (!this.initialExam) return this.files.length && this.form.class_ids.length;
+            if (!this.initialExam) {
+                return this.form.class_ids.length > 0 && this.files.some(file => file.filename === this.form.rule_filename);
+            }
             return Object.keys(this.changes).length && (!this.changes.class_ids || this.changes.class_ids.length);
         },
         current() { return this.groups.find(group => group.id === this.selected); },

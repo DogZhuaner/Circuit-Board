@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import re
+from ipaddress import IPv6Address
 from datetime import datetime
 from flask import abort, Flask, render_template, jsonify, request, send_file, session
 from flask_socketio import SocketIO
@@ -717,34 +719,53 @@ D. 选项D
 
 @app.route('/api/test_ollama_connection', methods=['POST'])
 def test_ollama_connection():
-    """测试Ollama连接"""
+    """Verify the Ollama service before reading its installed models."""
+    import requests
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, message='请填写模型服务地址和端口号。'), 400
+    host = str(data.get('ip', '')).strip()
+    port = str(data.get('port', ''))
+    if not re.fullmatch(r'[0-9]{1,5}', port) or not 1 <= int(port) <= 65535:
+        return jsonify(success=False, message='端口号须在 1 到 65535 之间。'), 400
+    if ':' in host:
+        try:
+            address = host[1:-1] if host.startswith('[') and host.endswith(']') else host
+            if '%' in address:
+                raise ValueError
+            host = f'[{IPv6Address(address)}]'
+        except ValueError:
+            return jsonify(success=False, message='请单独填写 IP 地址或主机名。'), 400
+    elif len(host) > 253 or not all(
+        re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
+        for label in host.rstrip('.').split('.')
+    ) or host.endswith('..'):
+        return jsonify(success=False, message='请单独填写 IP 地址或主机名。'), 400
+
+    base = f'http://{host}:{port}/api'
     try:
-        import requests
+        response = requests.get(f'{base}/version', timeout=5, allow_redirects=False)
+        version = response.json() if response.status_code == 200 else None
+        if not isinstance(version, dict) or not isinstance(version.get('version'), str) or not version['version']:
+            raise ValueError
+    except (requests.RequestException, ValueError):
+        return jsonify(success=False, message='无法连接 Ollama 服务，请检查地址、端口和服务状态。'), 502
 
-        data = request.get_json()
-        ip = data.get('ip', OLLAMA_QUESTION_DEFAULTS["host"])
-        port = data.get('port', OLLAMA_QUESTION_DEFAULTS["port"])
-        model_name = data.get('model_name', OLLAMA_QUESTION_DEFAULTS["model"])
+    try:
+        response = requests.get(f'{base}/tags', timeout=8, allow_redirects=False)
+        payload = response.json() if response.status_code == 200 else None
+        if not isinstance(payload, dict) or not isinstance(payload.get('models'), list):
+            raise ValueError
+        names = list(dict.fromkeys(item['name'] for item in payload['models']
+                                   if isinstance(item, dict) and isinstance(item.get('name'), str) and item['name']))
+    except (requests.RequestException, ValueError):
+        return jsonify(success=False, message='已连接，但获取模型列表失败，请重试。'), 502
 
-        # 测试连接
-        url = f"http://{ip}:{port}/api/tags"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-
-        # 检查模型是否存在
-        models = response.json().get('models', [])
-        model_exists = any(model['name'] == model_name for model in models)
-
-        if model_exists:
-            return jsonify({'success': True, 'message': '连接成功，模型可用'})
-        else:
-            return jsonify(
-                {'success': False, 'message': f'模型 {model_name} 不存在，可用模型: {[m["name"] for m in models]}'})
-
-    except requests.exceptions.RequestException as e:
-        return jsonify({'success': False, 'message': f'连接失败: {str(e)}'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'测试失败: {str(e)}'})
+    requested = data.get('model_name')
+    if requested and requested not in names:
+        return jsonify(success=False, models=names, message=f'模型 {requested} 不在可用列表中。')
+    return jsonify(success=True, host=host, models=names, message='连接成功')
 
 
 # 新增：数据可视化相关路由
