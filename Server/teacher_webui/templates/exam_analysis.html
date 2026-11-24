@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ name or '考试' }} · 详细分析</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/teacher-theme.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/teaching.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/exam-analysis.css') }}">
+  <script src="/static/js/session-navigation.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="roster-banner">
+    <div class="roster-emblem"><i class="bi bi-calendar-event" aria-hidden="true"></i></div>
+    <div class="heading"><h1>{{ name or '考试详细分析' }}</h1><span>考试详细分析 · 考试编号 {{ exam_id }}</span></div>
+    <a class="back" href="{{ url_for('index', panel='exams', exam=exam_id) }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> 返回管理考试</a>
+  </header>
+  <div class="analysis-body">
+  {% if error %}
+    <p class="teach-message teach-error" role="alert">{{ error }}</p>
+  {% else %}
+    <dl class="metrics">
+      <div><dt>有效成绩</dt><dd>{{ summary.count }} <small>人</small></dd></div>
+      <div><dt>无成绩</dt><dd>{{ summary.missing }} <small>人</small></dd></div>
+      <div><dt>平均分</dt><dd>{{ summary.average if summary.count else '—' }}</dd></div>
+      <div><dt>有易错点记录</dt><dd>{{ summary.tagged }} <small>人</small></dd></div>
+    </dl>
+    {% macro bar(label, count) %}
+      <li><div><span>{{ label }}</span><strong>{{ count }} 人</strong></div>
+        <div class="track" aria-hidden="true"><i style="width: {{ 100 * count / summary.count }}%"></i></div></li>
+    {% endmacro %}
+    <div class="plots">
+      <section class="teach-block" aria-labelledby="topics"><h2 id="topics"><i class="bi bi-exclamation-diamond" aria-hidden="true"></i> 易错知识点分布</h2>
+        {% if summary.topic_counts %}
+          <p>本场 {{ summary.count }} 人有成绩，其中 {{ summary.tagged }} 人记录了易错点。同一考生在每个知识点计一次。</p>
+          <ul class="bars">{% for label, count in summary.topic_counts.items() %}{{ bar(label, count) }}{% endfor %}</ul>
+        {% else %}<p>{{ '本场有成绩的考生尚无易错点记录。' if summary.count else '本场暂无有效成绩。' }}</p>{% endif %}
+      </section>
+      <section class="teach-block distribution" aria-labelledby="ranges"><h2 id="ranges"><i class="bi bi-bar-chart-steps" aria-hidden="true"></i> 成绩区间分布</h2>
+        {% if summary.count %}<p>{{ summary.band_basis }}</p>
+        <ul class="bars">{% for band in summary.bands %}{{ bar(band.label, band.count) }}{% endfor %}</ul>
+        {% else %}<p>本场暂无有效成绩。</p>{% endif %}
+      </section>
+    </div>
+    <section class="teach-block" aria-labelledby="ai-title">
+      <div class="comment-head"><div><h2 id="ai-title"><i class="bi bi-chat-left-text" aria-hidden="true"></i> AI 考试点评</h2>
+        <p>{{ '结合逐人成绩、分数段和已记录的易错点生成教学建议。' if summary.count else '本场暂无可用于点评的成绩。' }}</p></div>
+        <button type="button" class="roster-primary" id="generate" data-url="{{ url_for('teaching.generate_exam_comment', exam_id=exam_id) }}" {% if not summary.count %}disabled{% endif %}>生成AI点评</button>
+      </div>
+      <div id="answer" role="status" aria-live="polite"></div>
+    </section>
+    {% if summary.count %}
+    <section class="teach-block"><details><summary>查看考生成绩与易错点</summary>
+      <div class="table-scroll"><table class="roster-table"><thead><tr><th>考生</th><th>姓名</th><th>成绩</th><th>已记录易错点</th></tr></thead>
+        <tbody>{% for row in students if row.score is not none %}
+          <tr><td>{{ row.candidate }}</td><td>{{ row.name }}</td><td>{{ row.score }}</td>
+            <td>{{ row.topics|join('、') if row.topics else '未记录' }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </details></section>
+    {% endif %}
+  {% endif %}
+  </div>
+</main>
+{% if not error %}
+<script>
+  const button = document.getElementById('generate');
+  button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    button.textContent = '正在生成点评…';
+    button.setAttribute('aria-busy', 'true');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 100000);
+    try {
+      const response = await fetch(button.dataset.url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: '{}', signal: controller.signal, cache: 'no-store'});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success || !data.comment) throw new Error(data.message || '生成点评失败，请重试。');
+      document.getElementById('answer').textContent = data.comment;
+      button.textContent = 'AI点评已生成';
+      button.classList.add('complete');
+    } catch (error) {
+      window.alert(controller.signal.aborted ? '生成点评超时，请重试。' : error.message);
+      button.disabled = false;
+      button.textContent = '生成AI点评';
+    } finally {
+      clearTimeout(timeout);
+      button.removeAttribute('aria-busy');
+    }
+  });
+</script>
+{% endif %}
+</body></html>

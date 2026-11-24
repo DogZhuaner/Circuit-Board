@@ -14,6 +14,7 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.serving import run_simple
 
 from recording_archive import archive_path
+from score_feedback import feedback, score_rows, recent_results, split_knowledge_points
 from db import MySQLConnector
 from exam_access import ExamEntryError, exam_ticket, exam_rule_ticket, check_install_receipt, open_exams, require_open_exam
 from teacher_webui.app import app as teacher_app
@@ -32,6 +33,7 @@ from tools.face_recognition_service import FaceRecognitionError, recognize_face_
 
 app = Flask(__name__, template_folder="templates")
 app.config.update(SECRET_KEY=STUDENT_WEB_CONFIG["secret_key"], SESSION_COOKIE_NAME="circuit_entry")
+app.register_blueprint(feedback)
 CORS(app)
 
 
@@ -331,12 +333,10 @@ def student_scores(sno=None):
     navigation = dict(back_url=back_url, back_label="返回学生名册" if sno is not None else "返回选择页")
     connector = MySQLConnector()
     try:
-        rows = connector.query(
-            "SELECT r.id, r.test_id, r.test_name, r.test_score, r.knowledge, w.result_id "
-            "FROM exam_result r LEFT JOIN exam_recording w ON w.result_id=r.id "
-            "WHERE r.student_no=%s AND r.test_score IS NOT NULL ORDER BY r.created_at,r.id",
-            (student["id"],),
-        )
+        rows = score_rows(connector, student["id"])
+        commentary = None
+        if sno is None:
+            commentary = {"count": len(recent_results(rows)), "comment": ""}
     except RuntimeError:
         app.logger.exception("读取学生成绩失败")
         return render_template("scores.html", error="暂时无法读取成绩，请稍后重试。", **navigation), 503, {"Cache-Control": "no-store"}
@@ -345,13 +345,12 @@ def student_scores(sno=None):
 
     scores = []
     counts = Counter()
-    for row_id, exam_id, name, score, knowledge, review_id in rows:
+    for row_id, exam_id, name, score, knowledge, digest, _, _ in rows:
         scores.append({"id": row_id, "test_id": exam_id, "test_name": name, "score": float(score),
-                       "review_url": url_for("score_review", result_id=row_id, sno=sno) if review_id else None})
-        points = (knowledge or "").replace("，", ",").split(",")
-        counts.update(point.strip() for point in points if point.strip())
+                       "review_url": url_for("score_review", result_id=row_id, sno=sno) if digest else None})
+        counts.update(split_knowledge_points(knowledge))
     return render_template(
-        "scores.html", student=student, scores=scores, **navigation,
+        "scores.html", student=student, scores=scores, commentary=commentary, **navigation,
         knowledge=[{"name": name, "count": count} for name, count in counts.most_common()],
         exam_count=len({row["test_id"] for row in scores}),
         average=round(sum(row["score"] for row in scores) / len(scores), 2) if scores else "—",

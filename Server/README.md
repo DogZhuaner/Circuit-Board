@@ -63,3 +63,9 @@ WHERE r.student_no = %s AND r.test_id = %s;
 已有库在上述迁移后执行一次 `migrations/003_exam_classes.sql`。新考试须指定至少一个教师名下的班级，学生按当前班级成员关系及开放时间选考。迁移前发布的考试沿用原开放范围。
 
 已有库随后执行一次 `migrations/004_require_exam_rules.sql`。新发布的考试必须指定接线规则文件，并保存至少一条有效规则。已有的无规则考试保留原始数据。
+
+更新学生成绩点评前，现有数据库执行 `migrations/005_exam_feedback.sql`。交卷时将最终接线与规则匹配的统计写入 `exam_result_summary.facts`，原始接线仍可从归档追溯。学生手动生成的点评仅在当前页面显示，刷新或重新进入后可再次生成。曾启用点评缓存的数据库在更新服务后执行 `migrations/006_remove_score_comment_cache.sql` 清理旧点评。
+
+已有库执行一次 `migrations/007_single_student_class.sql`，确保每名学生最多属于一个班级。如果旧库存在重复分班，请先核实这些学生的实际班级再执行迁移。
+
+教师在「管理考试 → 考试详情 → 考生成绩 → 查看详细分析」查看分数段、各易错知识点涉及的人数，并手动生成本场点评。用 `TEACHER_MODEL_API_BASE_URL` 和 `TEACHER_MODEL_CHAT_NAME` 设置服务地址和模型，按需配置 `TEACHER_MODEL_API_KEY`。服务发送匿名编号、原始分、已记录的易错点及本场统计，点评只在本次详情中显示。

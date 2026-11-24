@@ -6,49 +6,19 @@
     <title>教师端 - 电路配盘接线系统</title>
     <link href="/static/css/bootstrap.min.css" rel="stylesheet">
     <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/teacher-theme.css') }}" rel="stylesheet">
     <script src="/static/js/socket.io.min.js"></script>
     <script src="/static/js/vue.global.js"></script>
     <script src="{{ url_for('static', filename='js/rule-wire-layout.js') }}"></script>
     <script src="/static/js/chart.min.js"></script>
     <style>
-        :root {
-            --primary-color: #4f46e5;
-            --primary-dark: #3730a3;
-            --primary-light: #818cf8;
-            --secondary-color: #8b5cf6;
-            --secondary-dark: #7c3aed;
-            --success-color: #10b981;
-            --success-dark: #059669;
-            --success-light: #34d399;
-            --danger-color: #ef4444;
-            --danger-dark: #dc2626;
-            --danger-light: #f87171;
-            --warning-color: #f59e0b;
-            --warning-dark: #d97706;
-            --warning-light: #fbbf24;
-            --light-bg: #f8fafc;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --border-radius: 24px;
-            --card-radius: 16px;
-            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-            --shadow-hover: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-            --card-bg-opacity: 0.9;
-            /* 新增的浅色变量 */
-            --light-blue: #3b82f6;
-            --light-blue-dark: #2563eb;
-            --light-blue-light: #93c5fd;
-            --light-cyan: #06b6d4;
-            --light-cyan-dark: #0891b2;
-            --light-cyan-light: #67e8f9;
-        }
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
             min-height: 100vh;
             height: 100vh;
-            font-family: 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: var(--teacher-font);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1101,7 +1071,7 @@
                                         </div></td>
                                         <td class="roster-number">{{ student.sno || student.student_id }}</td>
                                         <td class="roster-number roster-id">{{ student.user_id || student.id }}</td>
-                                        <td v-if="canManageClasses" class="roster-class-name">{{ classNames(student.classIds) }}</td>
+                                        <td v-if="canManageClasses" class="roster-class-name">{{ student.className || '未分班' }}</td>
                                         <td><div class="roster-actions">
                                             <a v-if="canManageClasses" class="roster-edit" :href="'/staff/students/' + encodeURIComponent(student.sno) + '/scores'"
                                                target="_blank" rel="noopener" :aria-label="'查看' + student.name + '的成绩'" title="查看成绩">
@@ -1141,8 +1111,8 @@
                             </div>
                             <template v-if="isEditing && canManageClasses">
                                 <label for="studentClass" class="roster-class-label">所属班级</label>
-                                <select id="studentClass" v-model="currentStudent.classChoice">
-                                    <option v-if="currentStudent.classIds.length > 1" value="multiple" disabled>{{ classNames(currentStudent.classIds) }}</option>
+                                <select id="studentClass" v-model="currentStudent.classChoice" :disabled="currentStudent.otherTeacherClass">
+                                    <option v-if="currentStudent.otherTeacherClass" :value="String(currentStudent.classId)">{{ currentStudent.className }}</option>
                                     <option value="">未分班</option>
                                     <option v-for="group in rosterClasses" :key="group.id" :value="String(group.id)">{{ group.name }}</option>
                                 </select>
@@ -1669,25 +1639,12 @@
     .roster button { cursor: pointer; }
     .roster button:disabled { opacity: .45; cursor: default; }
     .roster :focus-visible { outline: 2px solid var(--light-blue-dark); outline-offset: 2px; }
-    .roster-banner, .roster-heading, .roster-person, .roster-actions,
+    .roster-heading, .roster-person, .roster-actions,
     .roster-tools, .roster-pagination, .roster-pagination > div, .roster-form-actions {
         display: flex;
         align-items: center;
         gap: 10px;
     }
-    .roster-banner {
-        gap: 16px;
-        padding: 22px 26px;
-        flex: none; color: var(--primary-color); background: white;
-        border-bottom: 1px solid var(--roster-line);
-    }
-    .roster-emblem {
-        display: grid; place-items: center; width: 48px; height: 48px;
-        border: 1px solid var(--roster-line); border-radius: 12px;
-        background: #eef2ff; color: var(--primary-color); font-size: 23px;
-    }
-    .roster-banner h2 { margin: 0; font-size: 23px; font-weight: 700; }
-    .roster-banner span { font-size: 13px; color: var(--text-secondary); }
     .roster-close {
         margin-left: auto; align-self: flex-start; width: 34px; height: 34px;
         border: 1px solid transparent; border-radius: 8px; color: #334155; background: #eef2f7;
@@ -1738,11 +1695,6 @@
     }
     .roster-search input { padding-left: 35px; }
     .roster-tools select { width: auto; max-width: 42%; }
-    .roster-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .roster-table :is(th, td) { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; }
-    .roster-table :is(th, td):first-child { padding-left: 20px; }
-    .roster-table th { background: #f1f5f9; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
-    .roster-table tbody tr:hover { background: var(--light-bg); }
     .roster-table tbody tr.active { background: #eff6ff; box-shadow: inset 3px 0 var(--roster-accent); }
     .roster-person { gap: 9px; overflow-wrap: anywhere; }
     .roster-avatar {
@@ -1772,8 +1724,6 @@
     .roster-password input { padding-right: 40px; }
     .roster-password button { position: absolute; top: 2px; right: 3px; height: 34px; font-size: 16px; }
     .roster-form-actions { margin-top: 20px; }
-    .roster-primary { flex: 1; border: 0; border-radius: 7px; padding: 9px; background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)); color: white; font-weight: 600; }
-    .roster-primary:hover { background: linear-gradient(135deg, var(--primary-dark), var(--primary-color)); }
     .roster-notice { margin: 0 18px 16px; font-size: 13px; color: var(--roster-ink); }
     @media (min-width: 781px) {
         .roster-editor { contain: size; overflow: auto; display: flex; flex-direction: column; }
@@ -2386,9 +2336,9 @@ const app = createApp({
         filteredManagedStudents() {
             let filtered = this.students;
             if (this.studentClassFilter === 'unassigned') {
-                filtered = filtered.filter(student => student.classIds.length === 0);
+                filtered = filtered.filter(student => student.classId === null);
             } else if (this.studentClassFilter !== 'all') {
-                filtered = filtered.filter(student => student.classIds.includes(this.studentClassFilter));
+                filtered = filtered.filter(student => student.classId === this.studentClassFilter);
             }
             const query = (this.studentSearchQuery || '').trim().toLowerCase();
             if (!query) {
@@ -3075,17 +3025,15 @@ const app = createApp({
                     this.canManageClasses ? getData('api/classes?memberships=1') : { classes: [], memberships: [] }
                 ]);
                 if (requestId !== this.studentRequestId) return;
-                const byStudent = new Map();
-                for (const membership of classes.memberships) {
-                    const sno = String(membership.student_no);
-                    if (!byStudent.has(sno)) byStudent.set(sno, []);
-                    byStudent.get(sno).push(membership.class_id);
-                }
+                const byStudent = new Map(classes.memberships.map(m => [String(m.student_no), m]));
                 this.rosterClasses = classes.classes;
                 if (typeof this.studentClassFilter === 'number' && !this.rosterClasses.some(c => c.id === this.studentClassFilter)) {
                     this.studentClassFilter = 'all';
                 }
-                this.students = roster.students.map(student => ({ ...student, classIds: byStudent.get(String(student.sno)) || [] }));
+                this.students = roster.students.map(student => {
+                    const membership = byStudent.get(String(student.sno));
+                    return { ...student, classId: membership?.class_id ?? null, className: membership?.class_name };
+                });
                 this.studentPage = Math.min(this.studentPage, this.studentPageCount);
             } catch (error) {
                 if (requestId === this.studentRequestId) this.studentsError = error.message || '学生名册加载失败';
@@ -3093,13 +3041,12 @@ const app = createApp({
                 if (requestId === this.studentRequestId) this.studentsLoading = false;
             }
         },
-        classNames(ids) {
-            return this.rosterClasses.filter(group => ids.includes(group.id)).map(group => group.name).join('、') || '未分班';
-        },
         editStudent(student) {
             this.currentStudent = {
-                classIds: student.classIds,
-                classChoice: student.classIds.length > 1 ? 'multiple' : student.classIds.join(''),
+                classId: student.classId,
+                className: student.className,
+                classChoice: String(student.classId ?? ''),
+                otherTeacherClass: student.classId !== null && !this.rosterClasses.some(c => c.id === student.classId),
                 id: student.user_id || student.id,
                 user_id: student.user_id || student.id,
                 sno: student.sno || student.student_id || '',
@@ -3147,8 +3094,8 @@ const app = createApp({
                 student_password: String(this.currentStudent.student_password).trim()
             };
             if (this.isEditing && this.canManageClasses) {
-                const { classChoice, classIds } = this.currentStudent;
-                if (classChoice !== 'multiple' && classChoice !== classIds.join(',')) {
+                const { classChoice, classId, otherTeacherClass } = this.currentStudent;
+                if (!otherTeacherClass && classChoice !== String(classId ?? '')) {
                     payload.class_id = classChoice === '' ? null : Number(classChoice);
                 }
             }
@@ -3359,6 +3306,8 @@ const app = createApp({
     mounted() {
         if (this.canManageClasses && new URLSearchParams(location.search).get('panel') === 'students') {
             this.openManageStudentsModal();
+        } else if (new URLSearchParams(location.search).get('panel') === 'exams') {
+            this.teachingMode = 'exams';
         }
 
         this.setupSocket();

@@ -3,10 +3,13 @@ from contextlib import closing
 from datetime import datetime
 from math import ceil
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, session, url_for
 from mysql.connector import Error, IntegrityError
 
 from db import MySQLConnector
+from score_feedback import split_knowledge_points
+from student_webui.model_service import ModelError
+from teacher_webui.exam_feedback import exam_comment, exam_score_summary
 
 
 class FormError(ValueError):
@@ -38,7 +41,8 @@ def owned_class(cur, class_id, lock=False):
         raise FormError('未找到该班级', 404)
     return row
 
-def set_student_class(cur, sno, class_id):
+
+def set_student_class(cur, sno, class_id, *, unassigned_only=False):
     teacher = session.get('teacher_id')
     if not teacher:
         raise FormError('请先登录教师账号', 401)
@@ -46,10 +50,51 @@ def set_student_class(cur, sno, class_id):
         if type(class_id) is not int or class_id <= 0:
             raise FormError('所选班级无效')
         owned_class(cur, class_id, True)
-    cur.execute('DELETE m FROM class_student m JOIN teaching_class c ON c.id=m.class_id '
-                'WHERE m.student_no=%s AND c.teacher_tno=%s', (sno, teacher))
+    cur.execute('SELECT m.class_id,c.teacher_tno FROM class_student m '
+                'JOIN teaching_class c ON c.id=m.class_id WHERE m.student_no=%s FOR UPDATE', (sno,))
+    existing = cur.fetchone()
+    if existing:
+        if str(existing[1]) != str(teacher):
+            raise FormError('该学生已在其他教师的班级，请先由原班教师移出', 409)
+        if existing[0] == class_id:
+            return
+        if unassigned_only:
+            raise FormError('该学生已有班级，请在管理学生中调整所属班级', 409)
+        cur.execute('DELETE FROM class_student WHERE student_no=%s', (sno,))
     if class_id is not None:
         cur.execute('INSERT INTO class_student (class_id,student_no) VALUES (%s,%s)', (class_id, sno))
+
+
+def read_ended_exam_scores(exam_id):
+    with closing(MySQLConnector()) as db:
+        db.connect()
+        with db.connection.cursor() as cur:
+            cur.execute('SELECT class_restricted,deadline_time<=NOW(),test_name,rule_snapshot FROM exam_test '
+                        'WHERE id=%s AND issuer_tno=%s', (exam_id, session['teacher_id']))
+            exam = cur.fetchone()
+            if not exam:
+                raise FormError('未找到这场考试', 404)
+            if not exam[1]:
+                raise FormError('考试结束后可查看成绩明细', 409)
+            roster_sql = 'SELECT s.sno,s.name FROM student s'
+            if exam[0]:
+                roster_sql += (' WHERE EXISTS (SELECT 1 FROM exam_class ec JOIN class_student cs '
+                               'ON cs.class_id=ec.class_id WHERE ec.exam_id=%s AND cs.student_no=s.sno)')
+            cur.execute(roster_sql, (exam_id,) if exam[0] else ())
+            students = {str(sno): dict(sno=str(sno), name=name, score=None) for sno, name in cur.fetchall()}
+            cur.execute('SELECT r.student_no,r.student_name,r.test_score,r.knowledge,w.result_id FROM exam_result r '
+                        'LEFT JOIN exam_recording w ON w.result_id=r.id '
+                        'WHERE r.test_id=%s AND r.test_score IS NOT NULL ORDER BY r.id', (str(exam_id),))
+            for sno, name, score, knowledge, recording_result in cur.fetchall():
+                # Include submitted work even if the student has since changed class.
+                row = students.setdefault(sno, dict(sno=sno, name=name, score=None))
+                if row['score'] is None:
+                    row['score'] = float(score)
+                    row['topics'] = list(dict.fromkeys(split_knowledge_points(knowledge)))
+                    if recording_result is not None:
+                        row['review_url'] = f'/staff/exams/{exam_id}/scores/{recording_result}/review'
+            rows = sorted(students.values(), key=lambda r: (len(r['sno']), r['sno']))
+            return exam[2], rows, exam_score_summary(rows, exam[3])
 
 
 def teaching_routes(read_rule_file, validate_rules):
@@ -185,34 +230,22 @@ def teaching_routes(read_rule_file, validate_rules):
 
     @bp.get('/exams/<int:exam_id>/scores')
     def ended_exam_scores(exam_id):
-        with closing(MySQLConnector()) as db:
-            db.connect()
-            with db.connection.cursor() as cur:
-                cur.execute('SELECT class_restricted,deadline_time<=NOW() FROM exam_test '
-                            'WHERE id=%s AND issuer_tno=%s', (exam_id, session['teacher_id']))
-                exam = cur.fetchone()
-                if not exam:
-                    raise FormError('未找到这场考试', 404)
-                if not exam[1]:
-                    raise FormError('考试结束后可查看成绩明细', 409)
-                roster_sql = 'SELECT s.sno,s.name FROM student s'
-                if exam[0]:
-                    roster_sql += (' WHERE EXISTS (SELECT 1 FROM exam_class ec JOIN class_student cs '
-                                   'ON cs.class_id=ec.class_id WHERE ec.exam_id=%s AND cs.student_no=s.sno)')
-                cur.execute(roster_sql, (exam_id,) if exam[0] else ())
-                students = {str(sno): dict(sno=str(sno), name=name, score=None) for sno, name in cur.fetchall()}
-                cur.execute('SELECT r.student_no,r.student_name,r.test_score,w.result_id FROM exam_result r '
-                            'LEFT JOIN exam_recording w ON w.result_id=r.id '
-                            'WHERE r.test_id=%s AND r.test_score IS NOT NULL ORDER BY r.id', (str(exam_id),))
-                for sno, name, score, recording_result in cur.fetchall():
-                    # Include submitted work even if the student has since changed class.
-                    row = students.setdefault(sno, dict(sno=sno, name=name, score=None))
-                    if row['score'] is None:
-                        row['score'] = float(score)
-                        if recording_result is not None:
-                            row['review_url'] = f'/staff/exams/{exam_id}/scores/{recording_result}/review'
-                rows = sorted(students.values(), key=lambda r: (len(r['sno']), r['sno']))
-                return jsonify(success=True, students=rows), 200, {'Cache-Control': 'no-store'}
+        _, rows, summary = read_ended_exam_scores(exam_id)
+        return jsonify(success=True, students=rows, summary=summary,
+                       analysis_url=url_for('exam_analysis', exam_id=exam_id)), 200, {'Cache-Control': 'no-store'}
+
+    @bp.post('/exams/<int:exam_id>/ai-comment')
+    def generate_exam_comment(exam_id):
+        if not request.is_json:
+            raise FormError('请求格式有误，请刷新后重试', 415)
+        name, rows, summary = read_ended_exam_scores(exam_id)
+        if not summary['count']:
+            raise FormError('本场考试暂无有效成绩', 422)
+        try:
+            comment = exam_comment(name, rows, summary)
+        except ModelError as exc:
+            return jsonify(success=False, message=str(exc)), exc.status
+        return jsonify(success=True, comment=comment), 200, {'Cache-Control': 'no-store'}
 
     @bp.patch('/exams/<int:exam_id>')
     def edit_exam(exam_id):
@@ -281,25 +314,29 @@ def teaching_routes(read_rule_file, validate_rules):
                             'GROUP BY c.id,c.name ORDER BY c.name,c.id', (teacher,))
                 groups = cur.fetchall()
                 if request.args.get('memberships') == '1':
-                    cur.execute('SELECT m.student_no,m.class_id FROM class_student m '
-                                'JOIN teaching_class c ON c.id=m.class_id WHERE c.teacher_tno=%s '
-                                'ORDER BY m.student_no,c.name,c.id', (teacher,))
+                    cur.execute('SELECT m.student_no,m.class_id,c.name AS class_name FROM class_student m '
+                                'JOIN teaching_class c ON c.id=m.class_id')
                     return jsonify(success=True, classes=groups, memberships=cur.fetchall())
                 return jsonify(success=True, classes=groups)
 
-    @bp.route('/classes/<int:class_id>', methods=['GET', 'PATCH'])
+    @bp.route('/classes/<int:class_id>', methods=['GET', 'PATCH', 'DELETE'])
     def class_detail(class_id):
         with closing(MySQLConnector()) as db:
             db.connect()
             with db.connection.cursor(dictionary=True) as cur:
-                group = owned_class(cur, class_id, request.method == 'PATCH')
+                group = owned_class(cur, class_id, request.method != 'GET')
+                if request.method == 'DELETE':
+                    # Foreign keys remove this class's memberships and exam audience links.
+                    cur.execute('DELETE FROM teaching_class WHERE id=%s', (class_id,))
+                    db.connection.commit()
+                    return jsonify(success=True)
                 if request.method == 'PATCH':
                     name = text_field('name', '班级名称', 100)
                     cur.execute('UPDATE teaching_class SET name=%s WHERE id=%s', (name, class_id))
                     db.connection.commit()
                     return jsonify(success=True)
                 cur.execute('SELECT s.sno,s.name,m.class_id IS NOT NULL AS member FROM student s '
-                            'LEFT JOIN class_student m ON m.student_no=s.sno AND m.class_id=%s '
+                            'LEFT JOIN class_student m ON m.student_no=s.sno WHERE m.class_id IS NULL OR m.class_id=%s '
                             'ORDER BY s.sno', (class_id,))
                 return jsonify(success=True, group=group, students=cur.fetchall())
 
@@ -327,11 +364,10 @@ def teaching_routes(read_rule_file, validate_rules):
             db.connect()
             with db.connection.cursor() as cur:
                 lock_student(cur, sno)
-                owned_class(cur, class_id, True)
                 if request.method == 'PUT':
-                    cur.execute('INSERT INTO class_student (class_id,student_no) VALUES (%s,%s) '
-                                'ON DUPLICATE KEY UPDATE class_id=class_student.class_id', (class_id, sno))
+                    set_student_class(cur, sno, class_id, unassigned_only=True)
                 else:
+                    owned_class(cur, class_id, True)
                     cur.execute('DELETE FROM class_student WHERE class_id=%s AND student_no=%s', (class_id, sno))
                 db.connection.commit()
                 return jsonify(success=True)

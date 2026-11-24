@@ -15,7 +15,34 @@ def archive_path(digest):
     return root / digest[:2] / (digest + ".json")
 
 
-def store_archive(raw, proof, *, expected_rules=None):
+def wiring_rule_weights(rules: list) -> dict:
+    # The gateway scores each unordered pair once, using its highest rule weight.
+    weights = {}
+    for rule in rules:
+        key = tuple(sorted(node.strip() for node in rule["nodes"]))
+        weights[key] = max(rule["score"], weights.get(key, rule["score"]))
+    return weights
+
+
+def final_wiring_facts(record: dict, rules: list) -> dict:
+    weights = wiring_rule_weights(rules)
+    observed = set()
+    for pair in record["latest_state"]["pairs"]:
+        if not isinstance(pair, list) or len(pair) != 2 or not all(isinstance(n, str) for n in pair):
+            raise ValueError("无效的最终接线")
+        observed.add(tuple(sorted(n.strip() for n in pair)))
+    positive = {pair for pair, weight in weights.items() if weight > 0}
+    return {
+        "version": 1,
+        "simulated": record["metadata"].get("simulated") is True,
+        "available_points": sum(weights[pair] for pair in positive),
+        "positive_pairs": len(positive),
+        "matched_positive_pairs": len(positive & observed),
+        "unmatched_pairs": len(observed - weights.keys()),
+    }
+
+
+def store_archive(raw, proof, *, expected_rules):
     if not isinstance(raw, str):
         raise ExamEntryError("缺少接线回顾文件", 400)
     content = raw.encode("utf-8")
@@ -35,6 +62,7 @@ def store_archive(raw, proof, *, expected_rules=None):
             raise ExamEntryError("检测使用的接线规则与本场考试不一致，请按指定规则重新检测", 409)
         if not valid:
             raise ValueError
+        facts = final_wiring_facts(record, expected_rules)
     except (ValueError, TypeError, KeyError):
         raise ExamEntryError("接线文件格式或考试归属有误", 400) from None
     path = archive_path(digest)
@@ -52,4 +80,4 @@ def store_archive(raw, proof, *, expected_rules=None):
     finally:
         if temp:
             temp.unlink(missing_ok=True)
-    return digest
+    return digest, facts

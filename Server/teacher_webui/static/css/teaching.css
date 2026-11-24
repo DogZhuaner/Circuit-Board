@@ -74,4 +74,9 @@
 .ended-exam-scores p, .grade-missing { color: var(--text-secondary); font-size: 13px; }
 .exam-grade-scroll { max-height: 45vh; overflow: auto; }
 .exam-grade-scroll th { position: sticky; top: 0; }
-.exam-wiring-review { display: block; width: 100%; height: clamp(300px, 39vh, 480px); border: 0; border-radius: 8px; }
+.exam-wiring-review { display: block; width: 100%; height: max(1000px, 60vh); border: 0; border-radius: 8px; }
+.exam-grade-scroll:has(.exam-wiring-review) { max-height: none; }
+.exam-candidate-ref { display: block; font-size: 12px; color: var(--text-secondary); }
+.exam-analysis-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px;
+    text-decoration: none; font-size: 14px; }
+.exam-analysis-link:hover { color: white; }

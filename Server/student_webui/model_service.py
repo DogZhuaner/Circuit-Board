@@ -107,6 +107,8 @@ def model_request(config, path, payload=None):
         if not response.ok or response.is_redirect:
             raise ModelError(f'模型服务返回 HTTP {response.status_code}，请检查接口地址和模型能力。', 502)
         result = response.json()
+    except requests.Timeout as exc:
+        raise ModelError('模型服务响应超时，请重试。', 504) from exc
     except (requests.RequestException, ValueError) as exc:
         raise ModelError('无法读取模型服务响应，请检查地址、端口及网络。', 502) from exc
     if not isinstance(result, dict):
@@ -153,12 +155,20 @@ def save_settings():
     return jsonify(success=True, settings=public_settings(config))
 
 
-def completion(kind, content):
+def completion(kind, content, *, instructions: str | None = None):
     config = read_settings(session['student']['id'])
     if not config[kind]:
         raise ModelError('请先在「大模型信息设置」中保存模型。')
+    return model_completion(config, config[kind], content, instructions=instructions)
+
+
+def model_completion(config, model: str, content, *, instructions: str | None = None):
+    messages = []
+    if instructions:
+        messages.append({'role': 'system', 'content': instructions})
+    messages.append({'role': 'user', 'content': content})
     result = model_request(config, '/chat/completions', {
-        'model': config[kind], 'messages': [{'role': 'user', 'content': content}], 'stream': False
+        'model': model, 'messages': messages, 'stream': False
     })
     try:
         answer = result['choices'][0]['message']['content']

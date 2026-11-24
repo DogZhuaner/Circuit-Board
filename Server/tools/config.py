@@ -93,6 +93,12 @@ PRACTICE_MODEL_DEFAULTS = {
     "question": _env("MODEL_QUESTION_NAME", ""),
 }
 
+TEACHER_MODEL = {
+    "base_url": _env("TEACHER_MODEL_API_BASE_URL", PRACTICE_MODEL_DEFAULTS["base_url"]).rstrip("/"),
+    "chat": _env("TEACHER_MODEL_CHAT_NAME", PRACTICE_MODEL_DEFAULTS["chat"]),
+    "api_key": _env("TEACHER_MODEL_API_KEY", ""),
+}
+
 
 def get_student_web_base(host_url):
     return _env("STUDENT_WEB_BASE", f"{host_url.rstrip('/')}/student").rstrip("/")

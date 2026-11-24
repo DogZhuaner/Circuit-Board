@@ -72,7 +72,12 @@
           <p v-if="!groups.length" class="teach-empty">{{ loading ? '正在加载班级…' : '尚未创建班级' }}</p>
         </section>
         <section class="teach-block">
-          <h3>班级成员</h3>
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <h3 class="mb-0">班级成员</h3>
+            <button v-if="current && ready" type="button" class="roster-delete" :disabled="busy || loading" @click="deleteGroup">
+              <i class="bi bi-trash" aria-hidden="true"></i> 删除班级
+            </button>
+          </div>
           <template v-if="selected && ready">
             <form class="teach-inline" @submit.prevent="renameGroup">
               <label class="visually-hidden" for="edit-class-name">当前班级名称</label>

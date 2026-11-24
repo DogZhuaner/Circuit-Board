@@ -17,8 +17,9 @@ from tools.config import DB_CONFIG, RULE_SERVER_CONFIG, TEACHER_WEB_CONFIG, STUD
 from contextlib import closing
 from mysql.connector import Error, IntegrityError
 from db import MySQLConnector as RosterDatabase
+from score_feedback import split_knowledge_points
 from practice_rules import default_rule, set_default_rule
-from teacher_webui.teaching import FormError, set_student_class, teaching_routes
+from teacher_webui.teaching import FormError, read_ended_exam_scores, set_student_class, teaching_routes
 
 try:
     from tools.connector import MySQLConnector
@@ -285,6 +286,20 @@ def require_teacher_session():
 @app.route('/')
 def index():
     return render_template('index.html'), 200, {'Cache-Control': 'no-store'}
+
+
+@app.get('/exams/<int:exam_id>/analysis')
+def exam_analysis(exam_id):
+    status = 200
+    try:
+        name, rows, summary = read_ended_exam_scores(exam_id)
+        context = dict(name=name, students=rows, summary=summary)
+    except FormError as exc:
+        context, status = dict(error=str(exc)), exc.status
+    except Error:
+        app.logger.exception('读取考试详细分析失败')
+        context, status = dict(error='暂时无法读取本场成绩，请稍后重试。'), 503
+    return render_template('exam_analysis.html', exam_id=exam_id, **context), status, {'Cache-Control': 'no-store'}
 
 
 # 添加新路由用于显示规则下载服务模态框
@@ -937,13 +952,6 @@ def parse_score_value(value):
         return float(value)
     except (TypeError, ValueError):
         return 0.0
-
-
-def split_knowledge_points(value):
-    if not value:
-        return []
-    text = str(value).replace('\uff0c', ',').replace('\u3001', ',').replace(';', ',').replace('\uff1b', ',')
-    return [item.strip() for item in text.split(',') if item.strip()]
 
 
 @app.route('/api/student_score/<sno>', methods=['GET'])

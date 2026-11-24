@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS exam_recording (
     CONSTRAINT fk_recording_result FOREIGN KEY (result_id) REFERENCES exam_result(id)
 ) ENGINE=InnoDB;
 
+DROP TABLE IF EXISTS exam_result_summary;
+DROP TABLE IF EXISTS student_score_comment;
+CREATE TABLE IF NOT EXISTS exam_result_summary (
+    result_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    facts JSON NOT NULL,
+    CONSTRAINT fk_summary_result FOREIGN KEY (result_id) REFERENCES exam_result(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 --
 -- Dumping data for table `exam_result`
 --
@@ -395,6 +403,7 @@ CREATE TABLE class_student (
     class_id INT UNSIGNED NOT NULL,
     student_no INT UNSIGNED NOT NULL,
     PRIMARY KEY (class_id, student_no),
+    UNIQUE KEY uq_class_student_student (student_no),
     CONSTRAINT fk_membership_class FOREIGN KEY (class_id) REFERENCES teaching_class(id)
         ON DELETE CASCADE,
     CONSTRAINT fk_membership_student FOREIGN KEY (student_no) REFERENCES student(sno)

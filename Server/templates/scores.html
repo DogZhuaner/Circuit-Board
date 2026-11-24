@@ -24,6 +24,14 @@
     .statistics { --accent: #11685b; --tint: #eaf7f3; }
     .trend { --accent: #5342a6; --tint: #f2efff; }
     .knowledge { --accent: #8a541e; --tint: #fff5e6; }
+    .commentary { --accent: #195a54; --tint: #edf6f3; }
+    .comment-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .85rem; }
+    .comment-action { font-weight: 600; background: #195a54; color: white; border-radius: .65rem; padding: .55rem 1rem; }
+    .comment-action:hover { background: #104740; color: white; }
+    .comment-action:disabled { background: #606971; color: white; opacity: 1; transition: none; }
+    .comment-action.complete:disabled { background: #237043; }
+    .comment-copy { margin: 1rem 0 0; padding: .2rem 0 .2rem 1rem; border-inline-start: 3px solid #8fbbab;
+                    white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; }
     .details { --accent: #295e7a; --tint: #edf5fa; }
     .panel-title {
       display: flex; align-items: center; gap: .65rem;
@@ -100,6 +108,21 @@
           <p v-else class="text-muted mb-0">暂无易错知识点记录</p>
         </div>
       </section>
+      <section v-if="commentary" class="score-panel commentary">
+        <h2 class="panel-title"><i class="bi bi-chat-left-text" aria-hidden="true"></i>AI个人点评</h2>
+        <div class="panel-content">
+          <div class="comment-toolbar">
+            <p class="mb-0 text-muted">{{ commentary.count ? '基于最近 ' + commentary.count + ' 场考试成绩及已记录的易错点' : '暂无可用于点评的考试成绩' }}</p>
+            <button class="btn comment-action" type="button" :class="{complete: commentary.comment}"
+                    :disabled="generating || !!commentary.comment || !commentary.count"
+                    :aria-busy="generating" @click="generateComment">
+              <span v-if="generating" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+              {{ generating ? '正在生成点评…' : commentary.comment ? 'AI点评已生成' : '生成AI点评' }}
+            </button>
+          </div>
+          <div aria-live="polite"><p v-if="commentary.comment" class="comment-copy">{{ commentary.comment }}</p></div>
+        </div>
+      </section>
       <section class="score-panel details">
         <h2 class="panel-title"><i class="bi bi-table" aria-hidden="true"></i>考试成绩详情</h2>
         <div class="panel-content table-responsive">
@@ -150,6 +173,8 @@
           studentInfo: {{ student|tojson }},
           studentScores: {{ scores|tojson }},
           studentKnowledge: {{ knowledge|tojson }},
+          commentary: {{ commentary|tojson }},
+          generating: false,
           examCount: {{ exam_count }},
           avgScore: {{ average|tojson }}
         };
@@ -159,6 +184,30 @@
         if (this.studentKnowledge.length) this.drawKnowledgeChart();
       },
       methods: {
+        async generateComment() {
+          if (this.generating || this.commentary.comment || !this.commentary.count) return;
+          this.generating = true;
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 100000);
+          try {
+            const response = await fetch({{ url_for('score_feedback.generate_comment')|tojson }}, {
+              method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+              signal: controller.signal
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || typeof data.comment !== 'string' || !data.comment.trim()) {
+              throw new Error(data.message || '生成点评失败，请稍后重试。');
+            }
+            this.commentary = {count: data.count, comment: data.comment};
+          } catch (error) {
+            const message = controller.signal.aborted ? '生成点评超时，请重试。' :
+              error instanceof TypeError ? '网络连接失败，请重试。' : error.message;
+            window.alert(message);
+          } finally {
+            clearTimeout(timer);
+            this.generating = false;
+          }
+        },
         // 获取成绩等级
         getScoreLevel(score) {
             if (score >= 90) return '优秀';

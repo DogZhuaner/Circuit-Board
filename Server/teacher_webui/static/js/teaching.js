@@ -8,8 +8,8 @@ function trapTeachingFocus(event) {
     }
 }
 
-async function teachingApi(path, method = 'GET', body) {
-    const options = { method, cache: 'no-store' };
+async function teachingApi(path, method = 'GET', body, signal) {
+    const options = { method, cache: 'no-store', signal };
     if (body) {
         options.headers = { 'Content-Type': 'application/json' };
         options.body = JSON.stringify(body);
@@ -164,6 +164,20 @@ const TeachingDialog = {
                 this.notice = '班级名称已保存';
             });
         },
+        deleteGroup() {
+            const group = this.current;
+            if (!group || this.busy || this.loading) return;
+            if (!window.confirm('确认删除「' + group.name + '」？班内所有学生将变为未分班，学生账号和成绩会保留。')) return;
+            return this.mutate(async () => {
+                await this.api('classes/' + group.id, 'DELETE');
+                this.groups = this.groups.filter(other => other.id !== group.id);
+                this.selected = null;
+                this.ready = false;
+                this.students = [];
+                if (this.groups.length) await this.choose(this.groups[0].id);
+                this.notice = '已删除「' + group.name + '」';
+            });
+        },
         setMember(student) {
             return this.mutate(async () => {
                 const adding = !student.member;
@@ -179,14 +193,18 @@ const TeachingDialog = {
 const EndedExamScores = {
     template: '#ended-exam-scores-template',
     props: { examId: Number },
-    data() { return { rows: [], loading: true, error: '', activeReview: null }; },
+    data() { return { rows: [], analysisUrl: '', loading: true, error: '', activeReview: null }; },
     mounted() { this.load(); },
     methods: {
         api: teachingApi,
         async load() {
             this.loading = true;
             this.error = '';
-            try { this.rows = (await this.api('exams/' + this.examId + '/scores')).students; }
+            try {
+                const data = await this.api('exams/' + this.examId + '/scores');
+                this.rows = data.students;
+                this.analysisUrl = data.analysis_url;
+            }
             catch (error) { this.error = error.message; }
             finally { this.loading = false; }
         }
@@ -199,10 +217,11 @@ const ExamManager = {
     props: { signedIn: Boolean },
     emits: ['close'],
     data() {
+        const initialExam = new URLSearchParams(location.search).get('exam');
         return {
             exams: [], editing: null, editorMode: '', returnFocus: null,
             loginRequired: !this.signedIn, loading: false, error: '', notice: '',
-            now: 0, clockOffset: 0, timer: null, openDetails: {}, deletingId: null
+            now: 0, clockOffset: 0, timer: null, openDetails: initialExam ? { [initialExam]: true } : {}, deletingId: null
         };
     },
     mounted() {

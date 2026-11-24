@@ -1109,16 +1109,16 @@
                             <div class="card-header">题目生成</div>
                             <div class="card-body">
                                 <div class="mb-3">
-                                    <label class="form-label">选择知识点类型（可选）：</label>
-                                    <select v-model="selectedKnowledge" class="form-select">
-                                        <option value="">知识点类型</option>
+                                    <label for="question-knowledge" class="form-label">选择知识点类型</label>
+                                    <select id="question-knowledge" v-model="selectedKnowledge" class="form-select" required>
+                                        <option value="" disabled hidden>请选择知识点</option>
                                         <option v-for="knowledge in availableKnowledge" :key="knowledge" :value="knowledge">
                                             {{ knowledge }}
                                         </option>
                                     </select>
                                 </div>
 
-                                <button @click="generateQuestion" class="btn btn-success" :disabled="questionLoading">
+                                <button @click="generateQuestion" class="btn btn-success" :disabled="!canGenerateQuestion">
                                     <span v-if="questionLoading" class="spinner-border spinner-border-sm me-2"></span>
                                     <i v-else class="bi bi-magic me-2"></i>
                                     生成题目
@@ -1291,6 +1291,10 @@
             },
 
             computed: {
+                canGenerateQuestion() {
+                    return !this.questionLoading && this.availableKnowledge.includes(this.selectedKnowledge);
+                },
+
                 examStorageKey() {
                     return this.selectedExam && 'exam-attempt:' + this.studentInfo.student_id + ':' + this.selectedExam.id;
                 },
@@ -2064,6 +2068,7 @@
 
                 // 生成题目
                 async generateQuestion() {
+                    if (!this.canGenerateQuestion) return;
                     if (!this.modelSettings.question) {
                         this.alertInPractice('请先在「大模型信息设置」中选择出题模型。');
                         return;
@@ -2218,6 +2223,7 @@
                         const data = await response.json();
                         if (data.success) {
                             this.availableKnowledge = data.knowledge_list;
+                            if (!this.availableKnowledge.includes(this.selectedKnowledge)) this.selectedKnowledge = '';
                         } else {
                             console.error('加载知识点列表失败:', data.message);
                         }
