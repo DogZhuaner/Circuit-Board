@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "explanation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 3000
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^:\\s]+$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[^:]+$"
+            },
+            "minItems": 1,
+            "maxItems": 48,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "pins"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 96
+    },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 81
+        },
+        "minItems": 2,
+        "maxItems": 64,
+        "uniqueItems": true
+      },
+      "minItems": 0,
+      "maxItems": 192
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      },
+      "minItems": 0,
+      "maxItems": 64
+    },
+    "wires": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 81
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 81
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "title",
+    "explanation",
+    "components",
+    "nets",
+    "uncertainties",
+    "wires"
+  ],
+  "additionalProperties": false
+}
