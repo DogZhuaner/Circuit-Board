@@ -1,0 +1,29 @@
+{
+  "families": {
+    "SB": {
+      "NO.IN": "3/NO",
+      "NO.OUT": "4/NO",
+      "NC.IN": "1/NC",
+      "NC.OUT": "2/NC",
+      "23": "3/NO",
+      "24": "4/NO",
+      "11": "1/NC",
+      "12": "2/NC"
+    },
+    "KM": {
+      "NO.IN": "13/NO",
+      "NO.OUT": "14/NO",
+      "NC.IN": "61/NC",
+      "NC.OUT": "62/NC",
+      "COIL.IN": "A1",
+      "COIL.OUT": "A2"
+    },
+    "FR": {
+      "NO.IN": "97/NO",
+      "NO.OUT": "98/NO",
+      "NC.IN": "95/NC",
+      "NC.OUT": "96/NC"
+    }
+  },
+  "devices": {}
+}

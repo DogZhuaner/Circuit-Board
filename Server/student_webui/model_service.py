@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from urllib.parse import urlsplit
 
-import requests
+from tools.model_client import ModelClient, ProviderError
 from flask import Blueprint, current_app, jsonify, request, session
 
 from tools.config import PRACTICE_MODEL_DEFAULTS
@@ -58,7 +58,7 @@ def public_settings(config):
     except ValueError:
         ip = ''
     return {name: config[name] for name in ('chat', 'question', 'saved')} | {
-        'ip': ip, 'port': endpoint.port or (443 if endpoint.scheme == 'https' else 80),
+        'base_url': config['base_url'], 'protocol': config.get('protocol', 'auto'), 'ip': ip, 'port': endpoint.port or (443 if endpoint.scheme == 'https' else 80),
         'has_key': bool(config.get('api_key'))
     }
 
@@ -71,55 +71,50 @@ def request_fields():
 
 
 def endpoint_config(data):
-    host = data.get('ip')
+    protocol = data.get('protocol', 'auto')
+    base_url = data.get('base_url') or ''
+    if not isinstance(base_url, str) or not isinstance(protocol, str):
+        raise ModelError('模型地址或接口类型无效。')
+    base_url = base_url.strip().rstrip('/')
+    if not base_url:
+        host = data.get('ip')
+        try:
+            if not isinstance(host, str) or '%' in host:
+                raise ValueError
+            ip = ip_address(host.strip())
+        except ValueError:
+            raise ModelError('请输入 IPv4 或 IPv6 地址，无需协议和路径。') from None
+        port = str(data.get('port', ''))
+        if not (port.isascii() and port.isdecimal() and len(port) <= 5 and 1 <= int(port) <= 65535):
+            raise ModelError('端口号必须是 1 到 65535 之间的整数。')
+        host = f'[{ip}]' if ip.version == 6 else str(ip)
+        base_url = f'http://{host}:{int(port)}'
     try:
-        if not isinstance(host, str) or '%' in host:
-            raise ValueError
-        ip = ip_address(host.strip())
-    except ValueError:
-        raise ModelError('请输入 IPv4 或 IPv6 地址，无需协议和路径。') from None
-    port = str(data.get('port', ''))
-    if not (port.isascii() and port.isdecimal() and len(port) <= 5 and 1 <= int(port) <= 65535):
-        raise ModelError('端口号必须是 1 到 65535 之间的整数。')
-    host = f'[{ip}]' if ip.version == 6 else str(ip)
-    base_url = f'http://{host}:{int(port)}/v1'
+        base_url = ModelClient(base_url, protocol=protocol).base
+    except ValueError as exc:
+        raise ModelError(str(exc)) from exc
     key = data.get('api_key', '')
     if not isinstance(key, str) or any(not 33 <= ord(c) <= 126 for c in key.strip()):
         raise ModelError('API Key 格式不正确。')
     key = key.strip()
     if not key:
         saved = read_settings(session['student']['id'])
-        if base_url == saved['base_url']:
+        if base_url == saved['base_url'] and protocol == saved.get('protocol', 'auto'):
             key = saved.get('api_key', '')
-    return {'base_url': base_url, 'api_key': key}
+    return {'base_url': base_url, 'protocol': protocol, 'api_key': key}
 
 
-def model_request(config, path, payload=None):
-    headers = {}
-    if config.get('api_key'):
-        headers['Authorization'] = 'Bearer ' + config['api_key']
-    try:
-        response = requests.request('GET' if payload is None else 'POST',
-                                    config['base_url'] + path, headers=headers, json=payload,
-                                    timeout=(5, 10 if payload is None else 90), allow_redirects=False)
-        if response.status_code in (401, 403):
-            raise ModelError('模型服务拒绝访问，请检查 API Key 和访问权限。', 502, requires_key=True)
-        if not response.ok or response.is_redirect:
-            raise ModelError(f'模型服务返回 HTTP {response.status_code}，请检查接口地址和模型能力。', 502)
-        result = response.json()
-    except (requests.RequestException, ValueError) as exc:
-        raise ModelError('无法读取模型服务响应，请检查地址、端口及网络。', 502) from exc
-    if not isinstance(result, dict):
-        raise ModelError('模型服务返回了无法识别的数据。', 502)
-    return result
+def client(config):
+    return ModelClient(config['base_url'], config.get('api_key'), config.get('protocol', 'auto'))
+
+
+@models.errorhandler(ProviderError)
+def provider_error(error):
+    return model_error(ModelError(str(error), 502, requires_key=error.status in (401, 403)))
 
 
 def list_models(config):
-    items = model_request(config, '/models').get('data')
-    if not isinstance(items, list):
-        raise ModelError('模型列表格式不符合 OpenAI 兼容接口。', 502)
-    return list(dict.fromkeys(item['id'] for item in items
-                              if isinstance(item, dict) and isinstance(item.get('id'), str) and item['id']))
+    return client(config).models()
 
 
 @models.post('/api/models/discover')
@@ -157,16 +152,9 @@ def completion(kind, content):
     config = read_settings(session['student']['id'])
     if not config[kind]:
         raise ModelError('请先在「大模型信息设置」中保存模型。')
-    result = model_request(config, '/chat/completions', {
+    return client(config).complete({
         'model': config[kind], 'messages': [{'role': 'user', 'content': content}], 'stream': False
     })
-    try:
-        answer = result['choices'][0]['message']['content']
-    except (KeyError, IndexError, TypeError):
-        answer = None
-    if not isinstance(answer, str) or not answer.strip():
-        raise ModelError('模型未返回文本内容，请检查所选模型。', 502)
-    return answer
 
 
 @models.post('/api/ai_chat')

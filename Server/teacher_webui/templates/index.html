@@ -565,6 +565,7 @@
         }
     </style>
 <script src="/static/js/session-navigation.js" defer></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='vision/panel.css') }}">
 </head>
 <body>
 <div id="app">
@@ -742,7 +743,7 @@
             </button>
         </header>
         <div class="rule-method-actions">
-            <button type="button" disabled><i class="bi bi-lock" aria-hidden="true"></i> 上传电路图</button>
+            <button type="button" id="vision-panel-open" @click="$refs.ruleMethodDialog.close()"><i class="bi bi-image" aria-hidden="true"></i> 上传电路图</button>
             <button type="button" autofocus @click="openRuleBuilderModal"><i class="bi bi-pencil" aria-hidden="true"></i> 手动制定</button>
         </div>
     </dialog>
@@ -755,6 +756,7 @@
                 <button type="button" ref="ruleBuilderClose" class="roster-close" aria-label="关闭制定接线规则" @click="closeRuleBuilderModal"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
             </div>
             <div class="modal-body">
+                <a v-if="ruleImage" :href="ruleImage" target="_blank" rel="noopener"><img :src="ruleImage" alt="接线参考原图" style="max-height:140px;max-width:100%"></a>
                 <div class="rule-toolbar">
                     <div class="form-group rule-file-field">
                         <label for="ruleFileName">规则文件名</label>
@@ -2339,6 +2341,7 @@ const app = createApp({
             ruleContactRefs: {},
             ruleResizeObserver: null,
             ruleCanvas: { width: 1600, height: 900 },
+            ruleImage: '',
             ruleBuilder: {
                 filename: '',
                 selectedContact: null,
@@ -2836,8 +2839,8 @@ const app = createApp({
                 this.ruleBuilder.highlightedWireId = null;
             }
         },
-        buildExportedRules() {
-            return this.ruleBuilder.wires.map((wire, index) => ({
+        buildExportedRules(wires = this.ruleBuilder.wires) {
+            return wires.map((wire, index) => ({
                 id: index + 1,
                 nodes: [wire.start, wire.end],
                 score: Number(wire.score || 0)
@@ -3378,7 +3381,7 @@ const app = createApp({
 });
 app.component('teaching-dialog', TeachingDialog);
 app.component('exam-manager', ExamManager);
-app.mount('#app');
+const teacherUI = app.mount('#app');
 </script>
 
     <!-- 考试列表模态框 -->
@@ -3805,6 +3808,8 @@ app.mount('#app');
         }
     }
 </style>
+{% include 'vision_panel.html' %}
+<script src="{{ url_for('static', filename='vision/panel.js') }}"></script>
 </body>
 </html>
 
