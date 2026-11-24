@@ -100,6 +100,33 @@ class VisionPanelTests(unittest.TestCase):
         self.assertTrue(payload["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
         self.assertNotIn("本次允许的端子",payload["messages"][0]["content"])
 
+    @patch.dict("os.environ", {"CIRCUIT_VLM_API_KEY":"server-only"})
+    @patch("tools.model_client.requests.post")
+    def test_custom_vision_services_receive_selected_model_image_and_own_key(self, call):
+        result = json.dumps({"title":"测试","nets":[{"line":"1","ends":["FU2:p1.out","FR:NC.in"]}]})
+        cases = [
+            ("openai", "/v1/chat/completions", {"choices":[{"message":{"content":result}}]}),
+            ("ollama", "/api/chat", {"message":{"content":result}}),
+            ("anthropic", "/v1/messages", {"content":[{"type":"text","text":result}]}),
+            ("gemini", "/v1beta/models/test-vl:generateContent", {"candidates":[{"content":{"parts":[{"text":result}]}}]}),
+        ]
+        for protocol, path, reply in cases:
+            with self.subTest(protocol=protocol):
+                call.return_value.status_code = 200
+                call.return_value.json.return_value = reply
+                with (EXAMPLES / "example.png").open("rb") as image:
+                    response = self.client.post("/api/vision-panel/analyze", data={
+                        "image":(image,"example.png"),"model":"test-vl","protocol":protocol,
+                        "service_url":"127.0.0.1:9000","service_key":"test-key"})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(call.call_args.args[0], "http://127.0.0.1:9000" + path)
+                body = call.call_args.kwargs["json"]
+                if protocol != "gemini":
+                    self.assertEqual(body["model"], "test-vl")
+                self.assertIn("iVBOR", json.dumps(body))
+                self.assertIn("test-key", str(call.call_args.kwargs["headers"]))
+                self.assertNotIn("server-only", str(call.call_args.kwargs["headers"]))
+
     def test_installation_requires_evidence_and_same_net(self):
         obs = {"title":"接线", "nets":[{"line":"3","ends":["SB1:NO.out","KM1:NO.out","KM1:coil.in"]}]}
         boxes = [[10,20,30,40],[120,150,180,200]]

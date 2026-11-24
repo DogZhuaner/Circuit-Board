@@ -5,7 +5,6 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from tools.model_client import ModelClient, ProviderError
 from flask import Blueprint, jsonify, request
@@ -398,13 +397,31 @@ def vision_client(base):
     return ModelClient(base, key, os.getenv("CIRCUIT_VLM_PROTOCOL", "auto"))
 
 
+@bp.app_context_processor
+def vision_defaults():
+    return {"vision_default_model": os.getenv("CIRCUIT_VLM_MODEL", DEFAULT_VISION_MODEL)}
+
+
+def selected_vision_client(fields):
+    base = fields.get("service_url", "").strip()
+    if not base:
+        return vision_client(os.getenv("CIRCUIT_VLM_BASE_URL", BAILIAN_BASE).rstrip("/"))
+    if "://" not in base:
+        base = "http://" + base
+    return ModelClient(base, fields.get("service_key", "").strip(), fields.get("protocol", "auto"))
+
+
+@bp.post("/api/vision-panel/models")
+def available_models():
+    try:
+        client = selected_vision_client(request.form)
+        return jsonify(models=client.models())
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+
 @bp.post("/api/vision-panel/analyze")
 def analyze():
-    base = os.getenv("CIRCUIT_VLM_BASE_URL", BAILIAN_BASE).rstrip("/")
-    if not base:
-        return jsonify(error="尚未配置视觉服务，请设置 CIRCUIT_VLM_BASE_URL 后重启教师端"), 503
-    if urlsplit(base).scheme not in ("https", "http"):
-        return jsonify(error="视觉服务地址需使用 HTTP 或 HTTPS"), 503
     try:
         request.max_content_length = 2 * MAX_BYTES + 128 * 1024
         if not any(k in request.files for k in ("image","installation")):
@@ -414,8 +431,9 @@ def analyze():
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     try:
-        client = vision_client(base)
-        return jsonify(read_schematic(client, os.getenv("CIRCUIT_VLM_MODEL", DEFAULT_VISION_MODEL), data, installation))
+        client = selected_vision_client(request.form)
+        model = request.form.get("model", "").strip() or os.getenv("CIRCUIT_VLM_MODEL", DEFAULT_VISION_MODEL)
+        return jsonify(read_schematic(client, model, data, installation))
     except ProviderError as exc:
         return jsonify(error=str(exc)), 502
     except (KeyError, IndexError, AttributeError, TypeError, ValueError) as exc:
