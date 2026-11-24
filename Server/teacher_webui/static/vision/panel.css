@@ -67,3 +67,15 @@
 #vp-boxes{position:absolute;inset:0;pointer-events:none}
 #vp-boxes span{position:absolute;border:2px solid #be382f;background:#ffd16644;box-sizing:border-box}
 #vp-basis{font-size:.85em;overflow:auto;max-height:5em}
+
+#vp-model-dialog{width:min(400px,92vw);max-height:85dvh;overflow:auto;border:1px solid #ccd1ee;border-radius:12px;padding:20px;color:#293454;background:white;box-shadow:0 12px 50px #29345438}
+#vp-model-dialog::backdrop{background:#29345455}
+#vp-model-form,#vp-model-form label,#vp-connection{display:grid;gap:6px}
+#vp-model-form{gap:12px}
+#vp-model-form h3,#vp-model-status{margin:0}
+#vp-model-status:empty,#vp-connection[hidden]{display:none}
+#vp-connection{border:0;padding:0;margin:0;gap:12px;min-width:0}
+#vp-model-form input,#vp-model-form select,#vp-model-form button{font:inherit;padding:7px 10px;border:1px solid #ccd1ee;border-radius:6px;min-width:0}
+#vp-model-form button{background:white;color:#5345c8;cursor:pointer}
+.vp-model-actions{display:flex;justify-content:flex-end;gap:8px}
+#vp-model-form button[type=submit]{background:#5846df;color:white}

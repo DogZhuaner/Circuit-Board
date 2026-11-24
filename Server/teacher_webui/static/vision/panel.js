@@ -303,10 +303,99 @@
     ++epoch;clear();file=null;el("file").value="";
     setSource(null);el("run").disabled=true;el("status").textContent="请选择原理图。";
   };
+  const settings = el("model-dialog");
+  const provider = el("provider");
+  const address = el("service-url");
+  const keyInput = el("service-key");
+  const modelInput = el("model-id");
+  const modelStorage = "circuit.teacher.visionModel.v1";
+  const serverModel = dialog.dataset.defaultModel;
+  let config = {provider:"default", address:"", model:serverModel, key:""};
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(modelStorage));
+    if (saved && Array.from(provider.options).some(o => o.value === saved.provider)
+        && typeof saved.model === "string" && saved.model && typeof saved.address === "string") {
+      config = {provider:saved.provider, address:saved.address, model:saved.model, key:""};
+    }
+  } catch { /* Storage may be unavailable in private browsing. */ }
+  function labelModel(){
+    el("settings").textContent = "配置模型服务";
+    el("settings").title = "当前模型：" + config.model;
+  }
+  function modelFields(selection){
+    const form = new FormData();
+    form.set("model", selection.model);
+    if (selection.provider !== "default") {
+      form.set("protocol", selection.provider);
+      form.set("service_url", selection.address);
+      if (selection.key) form.set("service_key", selection.key);
+    }
+    return form;
+  }
+  function draft(){
+    return {provider:provider.value, address:address.value.trim(), model:modelInput.value.trim(), key:keyInput.value.trim()};
+  }
+  function connectionFields(){
+    const custom = provider.value !== "default";
+    el("connection").hidden = !custom;
+    address.required = custom;
+  }
+  let listVersion = 0;
+  function resetChoices(){
+    listVersion++;
+    el("model-choices").replaceChildren();
+    el("model-status").textContent = "";
+    el("list-models").disabled = false;
+  }
+  labelModel();
+  el("settings").onclick = () => {
+    provider.value=config.provider; address.value=config.address;
+    modelInput.value=config.model; keyInput.value=config.key;
+    connectionFields(); resetChoices(); settings.showModal();
+  };
+  provider.onchange = () => {
+    resetChoices(); connectionFields(); keyInput.value="";
+    address.value = ({anthropic:"https://api.anthropic.com/v1", gemini:"https://generativelanguage.googleapis.com/v1beta"})[provider.value] || "";
+    modelInput.value = provider.value === "default" ? serverModel : "";
+  };
+  address.oninput = () => {keyInput.value=""; resetChoices();};
+  keyInput.oninput = resetChoices;
+  el("list-models").onclick = async () => {
+    if (!address.reportValidity()) return;
+    const version = ++listVersion;
+    el("model-status").textContent="正在读取模型列表…";
+    el("list-models").disabled=true;
+    try {
+      const {models} = await post(dialog.dataset.models,{body:modelFields(draft())});
+      if (version !== listVersion) return;
+      el("model-choices").replaceChildren(...models.map(id => new Option(id,id)));
+      el("model-status").textContent = models.length ? "已读取 " + models.length + " 个模型，请选择支持图像输入的模型。" : "列表为空，可手动输入模型 ID。";
+      modelInput.focus();
+    } catch(e) {
+      if (version === listVersion) el("model-status").textContent=e.message+" 也可手动输入模型 ID。";
+    } finally {
+      if (version === listVersion) el("list-models").disabled=false;
+    }
+  };
+  el("model-cancel").onclick = () => settings.close();
+  settings.onclose = () => {resetChoices(); keyInput.value="";};
+  el("model-form").onsubmit = event => {
+    event.preventDefault();
+    const next = draft();
+    if (!next.model || (next.provider !== "default" && !next.address)) {
+      el("model-status").textContent="请填写模型 ID 和所选服务的地址。"; return;
+    }
+    config = next;
+    try {
+      sessionStorage.setItem(modelStorage, JSON.stringify({provider:next.provider,address:next.address,model:next.model}));
+    } catch { /* Keep the selection in memory. */ }
+    labelModel(); settings.close();
+    el("status").textContent="下次识图将使用 "+config.model+"。";
+  };
   el("run").onclick=analyze;
   async function analyze(){
     const nonce=++epoch;clear();el("run").disabled=true;el("status").textContent="视觉模型正在辨认端子与连线…";
-    try{const form=new FormData();form.append("image",file);const data=await post(dialog.dataset.api,{body:form});
+    try{const form=modelFields(config);form.append("image",file);const data=await post(dialog.dataset.api,{body:form});
       if(nonce!==epoch)return;doc=data.netlist;
       pages=data.panels || [data.panel];
       equivalent=data.equivalent;el("plan-option").hidden=!equivalent;
