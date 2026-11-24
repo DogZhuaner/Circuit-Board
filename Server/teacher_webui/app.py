@@ -20,6 +20,7 @@ from db import MySQLConnector as RosterDatabase
 from score_feedback import split_knowledge_points
 from practice_rules import default_rule, set_default_rule
 from teacher_webui.teaching import FormError, read_ended_exam_scores, set_student_class, teaching_routes
+from teacher_webui.vision_panel import bp as vision_panel
 
 try:
     from tools.connector import MySQLConnector
@@ -123,6 +124,7 @@ def get_config_module():
 
 
 app = Flask(__name__)
+app.register_blueprint(vision_panel)
 app.jinja_loader = ChoiceLoader([
     app.jinja_loader,
     PrefixLoader({"wiring_panel": FileSystemLoader(os.path.join(parent_dir, "templates", "wiring_panel"))}),

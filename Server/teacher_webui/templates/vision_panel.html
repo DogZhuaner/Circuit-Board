@@ -1,0 +1,24 @@
+<dialog id="vp" aria-labelledby="vp-title" data-models="{{ url_for('vision_panel.available_models') }}" data-default-model="{{ vision_default_model }}" data-api="{{ url_for('vision_panel.analyze') }}" data-diagram="{{ url_for('vision_panel.render_diagram') }}" data-sample="{{ url_for('static', filename='vision/example.png') }}" data-reference="{{ url_for('static', filename='vision/example.json') }}">
+<header class="vp-head"><h2 id="vp-title">电路图解析</h2><div class="vp-window-actions"><button id="vp-min" aria-label="最小化" title="最小化">−</button><button id="vp-max" aria-label="最大化" title="最大化">□</button><button id="vp-close" aria-label="关闭窗口">×</button></div></header>
+<div class="vp-tools"><label class="vp-upload">选择原理图<input id="vp-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="vp-settings" aria-haspopup="dialog" title="当前模型：{{ vision_default_model }}">配置模型服务</button><button id="vp-reset">清除图片</button><button id="vp-run" disabled>重新识图</button><button id="vp-manual">手动制定规则</button><button id="vp-demo">星三角示例</button><nav id="vp-pager" hidden aria-label="接线方案"><button id="vp-prev">上一方案</button> <span id="vp-page" aria-live="polite"></span> <button id="vp-next">下一方案</button></nav><div id="vp-zoom" hidden><button id="vp-out" aria-label="缩小解析图">−</button><output id="vp-percent">100%</output><button id="vp-in" aria-label="放大解析图">＋</button><button id="vp-fit">全图适配</button></div></div>
+<p id="vp-status" role="status"></p><div class="vp-results"><section id="vp-source-section" hidden><h3>原理图</h3><a id="vp-source-link" target="_blank" rel="noopener" title="打开原尺寸图片"><span class="vp-image-wrap"><img id="vp-source" alt="输入图纸"><span id="vp-boxes"></span></span></a><output id="vp-basis"></output></section><section><h3>解析图</h3><div id="vp-scroll" tabindex="0" title="滚轮在指针处缩放，拖动平移；双击放大局部"><svg id="vp-board" role="img" aria-label="逐线配盘图"></svg><span id="vp-empty">请选择图片或打开示例</span></div></section>
+<section id="vp-controls" hidden><h3 id="vp-wire-title">接线对</h3><label id="vp-plan-option" hidden><input id="vp-plan" type="checkbox"> 显示含程序跨接的等价方案</label><div class="vp-rule-actions"><button id="vp-save">导出规则 JSON</button><button id="vp-edit">编辑评分并保存</button></div><details id="vp-networks" hidden><summary>查看原图网络与端子映射</summary><ol id="vp-network-list"></ol></details><ol id="vp-wires"></ol></section></div></dialog><button id="vp-dock" hidden aria-label="还原电路图解析窗口">▣　电路图解析　↗</button>
+<dialog id="vp-model-dialog" aria-labelledby="vp-model-title">
+  <form id="vp-model-form">
+    <h3 id="vp-model-title">配置模型服务</h3>
+    <label>模型服务<select id="vp-provider">
+      <option value="default">使用服务器配置</option><option value="auto">自定义 · 自动识别协议</option>
+      <option value="openai">OpenAI 兼容（百炼、vLLM 等）</option><option value="ollama">Ollama 原生</option>
+      <option value="anthropic">Anthropic Messages</option><option value="gemini">Gemini 原生</option>
+    </select></label>
+    <fieldset id="vp-connection" hidden>
+      <label>服务地址<input id="vp-service-url" placeholder="https://…/v1 或 IP:端口" autocomplete="off"></label>
+      <label>API Key（按需填写）<input id="vp-service-key" type="password" autocomplete="off" placeholder="仅在当前页面使用"></label>
+    </fieldset>
+    <label>视觉模型 ID<input id="vp-model-id" required list="vp-model-choices" autocomplete="off"></label>
+    <datalist id="vp-model-choices"></datalist>
+    <button type="button" id="vp-list-models">读取可用模型</button>
+    <p id="vp-model-status" role="status"></p>
+    <div class="vp-model-actions"><button type="button" id="vp-model-cancel">取消</button><button type="submit">应用模型</button></div>
+  </form>
+</dialog>

@@ -1158,19 +1158,13 @@
                     </div>
                     <div class="modal-body">
                         <p class="text-muted small">设置按当前学号保存，下次登录时自动沿用。</p>
-                        <div class="row g-2 mb-3">
-                            <div class="col-sm-8">
-                                <label class="form-label" for="model-ip">vLLM 服务 IP</label>
-                                <input id="model-ip" class="form-control" required placeholder="例如 192.168.1.100"
-                                       v-model.trim="modelDraft.ip" @input="modelEndpointChanged" :disabled="modelDraft.busy">
-                            </div>
-                            <div class="col-sm-4">
-                                <label class="form-label" for="model-port">端口号</label>
-                                <input id="model-port" type="number" class="form-control" min="1" max="65535" step="1" required
-                                       placeholder="8000" v-model="modelDraft.port" @input="modelEndpointChanged" :disabled="modelDraft.busy">
-                            </div>
-                        </div>
-                        <div v-if="modelDraft.requiresKey" class="mb-3">
+                        <label for="model-url">模型服务地址</label>
+                        <input id="model-url" class="form-control mb-2" required v-model.trim="modelDraft.base_url" placeholder="http://192.168.1.100:8000/v1" @input="modelEndpointChanged" :disabled="modelDraft.busy">
+                        <label for="model-protocol">接口格式</label>
+                        <select id="model-protocol" class="form-select mb-2" v-model="modelDraft.protocol" @change="modelEndpointChanged" :disabled="modelDraft.busy">
+                            <option value="auto">自动识别</option><option value="openai">OpenAI 兼容</option><option value="ollama">Ollama 原生</option><option value="anthropic">Anthropic Messages</option><option value="gemini">Gemini</option>
+                        </select>
+                        <div class="mb-3">
                             <label for="model-key" class="form-label">API Key</label>
                             <input id="model-key" type="password" class="form-control" autocomplete="off"
                                    :placeholder="modelDraft.hasSavedKey ? '已保存，留空沿用' : '请输入模型服务的密钥'"
@@ -2164,7 +2158,7 @@
                         const response = await fetch('api/models/discover', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ ip: draft.ip, port: draft.port, api_key: draft.api_key })
+                            body: JSON.stringify({ base_url: draft.base_url, protocol: draft.protocol, api_key: draft.api_key })
                         });
                         const result = await response.json();
                         if (result.requires_key) draft.requiresKey = true;
@@ -2189,10 +2183,10 @@
                     draft.failed = false;
                     draft.message = '正在保存…';
                     try {
-                        const {ip, port, chat, question, api_key} = draft;
+                        const {base_url, protocol, chat, question, api_key} = draft;
                         const response = await fetch('api/models/settings', {
                             method: 'POST', headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ ip, port, chat, question, api_key })
+                            body: JSON.stringify({ base_url, protocol, chat, question, api_key })
                         });
                         const result = await response.json();
                         if (result.requires_key) draft.requiresKey = true;
@@ -2372,7 +2366,7 @@
                 openAiModelSettingModal() {
                     const config = this.modelSettings;
                     this.modelDraft = {
-                        ip: config.ip, port: config.port, api_key: '',
+                        base_url: config.base_url, protocol: config.protocol || 'auto', api_key: '',
                         requiresKey: config.has_key, hasSavedKey: config.has_key,
                         chat: config.chat, question: config.question,
                         models: config.saved ? [...new Set([config.chat, config.question])] : [],
@@ -2384,8 +2378,7 @@
                         const host = localStorage.getItem(prefix + 'ip');
                         const port = localStorage.getItem(prefix + 'port');
                         if (host && port) {
-                            this.modelDraft.ip = host === 'localhost' ? '127.0.0.1' : host.replace(/^\[|\]$/g, '');
-                            this.modelDraft.port = port;
+                            this.modelDraft.base_url = `http://${host}:${port}`;
                         }
                         this.modelDraft.chat = localStorage.getItem('ai_ollama_model') || config.chat;
                         this.modelDraft.question = localStorage.getItem('ollama_model') || config.question;
