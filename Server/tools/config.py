@@ -88,7 +88,7 @@ RULE_SERVER_CONFIG = {
 }
 
 PRACTICE_MODEL_DEFAULTS = {
-    "base_url": _env("MODEL_API_BASE_URL", "http://127.0.0.1:8000/v1").rstrip("/"),
+    "base_url": _env("MODEL_API_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/"),
     "chat": _env("MODEL_CHAT_NAME", ""),
     "question": _env("MODEL_QUESTION_NAME", ""),
 }
