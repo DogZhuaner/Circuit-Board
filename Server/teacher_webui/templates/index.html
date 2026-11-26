@@ -753,10 +753,30 @@
                 <h2 class="modal-title" id="ruleBuilderTitle">
                     <i class="bi bi-diagram-3 me-2"></i>制定接线规则
                 </h2>
+                <button v-if="ruleImage" type="button" class="btn btn-outline-primary btn-sm rule-reference-open"
+                        aria-haspopup="dialog" @click="openRuleReference">
+                    <i class="bi bi-image" aria-hidden="true"></i> <span v-text="referenceMinimized ? '还原原理图' : '查看原理图'"></span>
+                </button>
                 <button type="button" ref="ruleBuilderClose" class="roster-close" aria-label="关闭制定接线规则" @click="closeRuleBuilderModal"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
             </div>
             <div class="modal-body">
-                <a v-if="ruleImage" :href="ruleImage" target="_blank" rel="noopener"><img :src="ruleImage" alt="接线参考原图" style="max-height:140px;max-width:100%"></a>
+                <dialog ref="ruleReference" class="rule-reference" aria-labelledby="rule-reference-title"
+                        @cancel.prevent="dismissRuleReference(false)">
+                    <header class="rule-reference-tools">
+                        <h3 id="rule-reference-title">原理图</h3>
+                        <button type="button" aria-label="缩小原理图" :disabled="referenceZoom <= 0.25" @click="zoomRuleReference(-0.25)">−</button>
+                        <output v-text="Math.round(referenceZoom * 100) + '%'"></output>
+                        <button type="button" aria-label="放大原理图" :disabled="referenceZoom >= 8" @click="zoomRuleReference(0.25)">＋</button>
+                        <button type="button" @click="referenceZoom = 1">适应窗口</button>
+                        <button type="button" @click="dismissRuleReference(true)">最小化</button>
+                        <button type="button" autofocus @click="dismissRuleReference(false)">关闭</button>
+                    </header>
+                    <div class="rule-reference-scroll" ref="referenceScroll" tabindex="0" aria-label="原理图浏览区域">
+                        <img v-if="ruleImage" :src="ruleImage" alt="接线参考原理图"
+                             @load="referenceAspect = $event.target.naturalWidth / $event.target.naturalHeight"
+                             :style="{width: 'calc(min(100cqw, ' + (referenceAspect * 100) + 'cqh) * ' + referenceZoom + ')'}">
+                    </div>
+                </dialog>
                 <div class="rule-toolbar">
                     <div class="form-group rule-file-field">
                         <label for="ruleFileName">规则文件名</label>
@@ -2111,6 +2131,20 @@
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
     }
 
+    .rule-reference-open { margin-left: auto; margin-right: 10px; }
+    .rule-reference {
+        width: min(960px, 94vw); height: min(760px, 90dvh); padding: 0; margin: auto;
+        border: 1px solid #d2d9e8; border-radius: 12px; color: #293454; background: white;
+        box-shadow: 0 16px 60px #17213d40;
+    }
+    .rule-reference[open] { display: flex; flex-direction: column; }
+    .rule-reference::backdrop { background: #1e293b55; }
+    .rule-reference-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-bottom: 1px solid #d2d9e8; }
+    .rule-reference-tools h3 { margin: 0 auto 0 0; font-size: 18px; color: var(--primary-color); }
+    .rule-reference-tools button { padding: 4px 9px; background: white; color: var(--primary-color); border: 1px solid #cbd3e2; border-radius: 6px; }
+    .rule-reference-tools button:disabled { opacity: .45; }
+    .rule-reference-scroll { flex: 1; min-height: 0; overflow: auto; container-type: size; background: #f6f8fc; }
+    .rule-reference-scroll img { display: block; height: auto; max-width: none; margin: 0 auto; }
     .rule-builder-modal .modal-header {
         flex: 0 0 auto;
         margin-bottom: 10px;
@@ -2342,6 +2376,9 @@ const app = createApp({
             ruleResizeObserver: null,
             ruleCanvas: { width: 1600, height: 900 },
             ruleImage: '',
+            referenceZoom: 1,
+            referenceAspect: 1,
+            referenceMinimized: false,
             ruleBuilder: {
                 filename: '',
                 selectedContact: null,
@@ -2704,7 +2741,24 @@ const app = createApp({
                 this.refreshRuleCanvas();
             });
         },
+        openRuleReference() {
+            const restore = this.referenceMinimized;
+            this.referenceMinimized = false;
+            this.$refs.ruleReference.showModal();
+            if (!restore) {
+                this.referenceZoom = 1;
+                this.$refs.referenceScroll.scrollTo(0, 0);
+            }
+        },
+        zoomRuleReference(step) {
+            this.referenceZoom = Math.max(0.25, Math.min(8, this.referenceZoom + step));
+        },
+        dismissRuleReference(minimize) {
+            this.referenceMinimized = minimize;
+            this.$refs.ruleReference.close();
+        },
         closeRuleBuilderModal() {
+            this.dismissRuleReference(false);
             this.showRuleBuilderModal = false;
             this.$nextTick(() => this.$refs.ruleBuilderCard.focus());
             this.ruleBuilder.notice = '';
